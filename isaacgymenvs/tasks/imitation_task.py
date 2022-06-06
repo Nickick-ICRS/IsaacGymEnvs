@@ -20,6 +20,7 @@ class ImitationTask(VecTask):
         self.enable_cycle_sync = self.cfg["task"]["enableCycleSync"]
         self.ref_state_init_prop = self.cfg["task"]["refStateInitProb"]
         self.enable_rand_init_time = self.cfg["task"]["enableRandInitTime"]
+        self.tar_steps = self.cfg["task"]["targetObsSteps"]
 
         # normalization
         self.lin_vel_scale = self.cfg["env"]["learn"]["linearVelocityScale"]
@@ -27,6 +28,7 @@ class ImitationTask(VecTask):
         self.dof_pos_scale = self.cfg["env"]["learn"]["dofPositionScale"]
         self.dof_vel_scale = self.cfg["env"]["learn"]["dofVelocityScale"]
         self.action_scale = self.cfg["env"]["learn"]["actionScale"]
+        self.tar_dof_pos_scale = self.cfg["env"]["learn"]["targetDofPositionScale"]
 
         # reward scales
         self.rew_scale = {}
@@ -263,19 +265,24 @@ class ImitationTask(VecTask):
         self.gym.refresh_dof_force_tensor(self.sim)
         
         self.obs_buf[:] = compute_robot_observations(
+        # other
             # tensors
             self.root_states,
-            self.commands,
             self.dof_pos,
             self.default_dof_pos,
             self.dof_vel,
-            self.gravity_vec,
+        motions, # (num_robots, 13+num_dofs, tar_steps)
             self.actions,
+        motion_t0s, # (num_robots)
+        fps, # (num_robots)
             # scales
+            self.env_time_step,
+            self.tar_steps,
             self.lin_vel_scale,
             self.ang_vel_scale,
             self.dof_pos_scale,
-            self.dof_vel_scale
+            self.dof_vel_scale,
+            self.tar_dof_pos_scale
         )
 
     def reset_idx(self, env_ids):
@@ -353,7 +360,7 @@ def compute_robot_reward(
     vel_err = torch.sum(dof_err[:, :, 1], dim=1)
 
     # 0,1,2 pos, 3,4,5,6 quat, 7,8,9 linvel, 10,11,12 angvel
-    base_quat = root_states[:, 3:7]
+    bquat_rotate_inversease_quat = root_states[:, 3:7]
     root_pos_diff = root_states[:, 0:3] - mimic_root_states[:, 0:3]
     root_pos_err = torch.sum(torch.square(root_pos_diff), dim=1)
     root_rot_diff = quat_unit(quat_mul(
@@ -394,48 +401,68 @@ def compute_robot_reward(
 
 @torch.jit.script
 def compute_robot_observations(
-        root_states, commands, dof_pos, default_dof_pos, dof_vel, gravity_vec,
-        actions, lin_vel_scale, ang_vel_scale, dof_pos_scale, dof_vel_scale
-
         # tensors
-        root_states,
-        ref_root_states
-        # dicts
-        motion_t0s,
-        motions,
+        root_states, # (num_robots, 13)
+        dof_pos, # (num_robots, num_dofs)
+        default_dof_pos, # (num_robots, num_dofs)
+        dof_vel, # (num_robots, num_dofs)
+        motions, # (num_robots, 13+num_dofs, tar_steps)
+        actions, # (num_robots, num_actions)
+        motion_t0s, # (num_robots)
+        fps, # (num_robots)
         # other
         timestep,
-        tar_steps
+        tar_steps,
+        lin_vel_scale,
+        ang_vel_scale,
+        dof_pos_scale,
+        dof_vel_scale,
+        tar_dof_pos_scale,
         ):
-    # TODO
-    tar_poses = []
+
+    # Goal is to match joint positions and root pose/vel(?) relative to
+    # current pose/vel
+
+    base_quat = root_states[:, 3:7]
+    base_lin_vel = quat_rotate_inverse(base_quat, root_states[:, 7:10]) * lin_vel_scale
+    base_ang_vel = quat_rotate_inverse(base_quat, root_states[:, 10:13]) * ang_vel_scale
+    dof_pos_scaled = (dof_pos - default_dof_pos) * dof_pos_scale
+    dof_vel_scaled = dof_vel * dof_vel_scale
+
+    # Calculate target joint positions
+    num_robots = motions.size(0)
+    obs_per_step = motions.size()[1] - 13
+
+    tar_obs = torch.empty(
+        (num_robots, obs_per_step * tar_steps), dtype=torch.float))
+
+    for step in timesteps:
+        ts = motion_t0s + step * timestep
+        tar_joints = calc_ref_joints(ts, fps, motions) * tar_dof_pos_scale
+
+        tar_obs[:, step*obs_per_step:(step+1)*obs_per_step] = tar_joints
+
+    obs = torch.cat((
+        base_lin_vel_scaled,
+        base_ang_vel_scaled,
+        dof_pos_scaled,
+        dof_vel_scaled,
+        tar_obs,
+        actions), dim=-1)
+
+    return obs
 
 
-    for motion, i in enumerate(motions):
-        t = motion_t0s[i]
-        ref_pos = gymapi.Vec3(ref_root_states[i, 0:3])
-        quat = gymapi.Quat(root_states[i, 3:7])
-        rot_dir = quat.rotate(gymapi.Vec3(1, 0, 0))
-        heading = torch.arctan2(rot_dir.y, rot_dir.x)
-        # Apply obs noise?
-        inv_heading_quat = gymapi.Quat.from_euler_zyx(-heading, 0, 0)
+@torch.jit.script
+def calc_ref_joints(times, fps, motions):
+    frames = times / fps
+    f0 = torch.floor(frames)
+    f1 = f0 + 1
+    w = frames - f0
+    n = motions.shape()[2]
+    # (num_robots, 13+num_dofs, tar_steps)
+    j0 = torch.tensor([motions[i, 13:, f0[i] % n] for i in range(len(f0))])
+    j1 = torch.tensor([motions[i, 13:, f1[i] % n] for i in range(len(f1))])
 
-        for step in tar_steps:
-            tar_t = motion_t0s[i] + step * timestep
-            
-            tar_pose = calc_ref_pose(tar_t, motion)
-
-            p = motion.get_frame_root_pos(tar_pose)
-            r = motion.get_frame_root_rot(tar_pose)
-            tar_root_pos = gymapi.Vec3(p[0], p[1], p[2])
-            tar_root_quat = gymapi.Quat(r[0], r[1], r[2], r[3])
-
-            tar_root_pos -= ref_pos
-            tar_root_pos = inv_heading_quat.rotate(tar_root_pos)
-            tar_root_quat = (inv_heading_quat * tar_root_quat).normalize()
-
-            p = np.array([tar_root_pos.x, tar_root_pos.y, tar_root_pos.z])
-            r = np.array([tar_root_rot.x, tar_root_rot.y, tar_root_rot.z, tar_root_rot.w]) 
-            motion.set_frame_root_pos(p, tar_pose)
-            motion.set_frame_root_rot(r, tar_pose)
-
+    joints = torch.lerp(j0, j1, w)
+    return joints
