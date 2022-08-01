@@ -47,6 +47,8 @@ from .shadow_hand import ShadowHand
 from .allegro_hand import AllegroHand
 from .trifinger import Trifinger
 
+from .walk_from_energy_min import WalkFromEnergyMin
+
 # Mappings from strings to environments
 isaacgym_task_map = {
     "AllegroHand": AllegroHand,
@@ -68,4 +70,5 @@ isaacgym_task_map = {
     "Quadcopter": Quadcopter,
     "ShadowHand": ShadowHand,
     "Trifinger": Trifinger,
+    "WalkFromEnergyMin": WalkFromEnergyMin,
 }
