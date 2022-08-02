@@ -164,7 +164,7 @@ class WalkFromEnergyMin(VecTask):
 
         body_names = self.gym.get_asset_rigid_body_names(ester_asset)
         self.dof_names = self.gym.get_asset_dof_names(ester_asset)
-        contact_fail_names = [s for s in body_names if "LOWER" not in s] # all non-lower leg/foot rigid bodies
+        contact_fail_names = [s for s in body_names if "lower" not in s] # all non-lower leg/foot rigid bodies
         self.contact_fail_indices = torch.zeros(len(contact_fail_names), dtype=torch.long, device=self.device, requires_grad=False)
         self.base_index = 0
 
@@ -267,7 +267,7 @@ class WalkFromEnergyMin(VecTask):
         positions_offset = torch_rand_float(0.5, 1.5, (len(env_ids), self.num_dof), device=self.device)
         velocities = torch_rand_float(-0.1, 0.1, (len(env_ids), self.num_dof), device=self.device)
 
-        self.dof_pos[env_ids] = self.default_dof_pos[env_ids] * positions_offset
+        self.dof_pos[env_ids] = self.default_dof_pos[env_ids]# * positions_offset
         self.dof_vel[env_ids] = velocities
 
         env_ids_int32 = env_ids.to(dtype=torch.int32)
@@ -329,9 +329,10 @@ def compute_ester_reward(
 
     # reset agents
     # if base contact forces exist we fell over
-    reset = torch.norm(contact_forces[:, base_index, :], dim=1) > 1.
+    #reset = torch.norm(contact_forces[:, base_index, :], dim=1) > 1.
     # if non-foot contact forces exist we fell over
-    reset = reset | torch.any(torch.norm(contact_forces[:, contact_fail_indices, :], dim=2) > 1., dim=1)
+    # reset = reset | torch.any(torch.norm(contact_forces[:, contact_fail_indices, :], dim=2) > 1., dim=1)
+    reset = torch.any(torch.norm(contact_forces[:, contact_fail_indices, :], dim=2) > 1., dim=1)
     timeout = episode_lengths >= max_episode_length -1
     reset = reset | timeout
     
