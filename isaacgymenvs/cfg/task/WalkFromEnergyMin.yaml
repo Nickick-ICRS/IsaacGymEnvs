@@ -10,6 +10,12 @@ env:
   clipObservations: 5.0
   clipActions: 1.0
 
+  force:
+    toggleChance: 0.01 # [0-1]
+    maxStrength: 20 # [N]
+    posRange: 0.1 # [m]
+
+
   plane:
     staticFriction: 1.0  # [-]
     dynamicFriction: 1.0  # [-]

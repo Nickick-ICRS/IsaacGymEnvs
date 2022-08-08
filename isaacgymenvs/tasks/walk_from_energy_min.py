@@ -62,6 +62,11 @@ class WalkFromEnergyMin(VecTask):
         self.cfg["env"]["numObservations"] = 63
         self.cfg["env"]["numActions"] = 16
 
+        # random external force parameters
+        self.force_toggle_chance = self.cfg["env"]["force"]["toggleChance"] # per step
+        self.force_strength = self.cfg["env"]["force"]["maxStrength"] # per axis
+        self.force_pos_range = self.cfg["env"]["force"]["posRange"] # diameter
+
         super().__init__(config=self.cfg, rl_device=rl_device, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless, virtual_screen_capture=virtual_screen_capture, force_render=force_render)
 
         # other
@@ -118,6 +123,13 @@ class WalkFromEnergyMin(VecTask):
         self.initial_root_states[:] = to_torch(self.base_init_state, device=self.device, requires_grad=False)
         self.gravity_vec = to_torch(get_axis_params(-1., self.up_axis_idx), device=self.device).repeat((self.num_envs, 1))
         self.actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device = self.device, requires_grad=False)
+
+        # to randomly apply external forces to the robot during training
+        self.apply_external_forces = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False)
+        self.external_forces = torch.zeros(self.num_envs * self.num_bodies, 3, dtype=torch.float, device=self.device, requires_grad=False)
+        self.external_forces_body = self.external_forces[0::self.num_bodies, :]
+        self.external_force_pos = torch.zeros_like(self.external_forces)
+        self.external_force_pos_body = self.external_force_pos[0::self.num_bodies, :]
 
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
 
@@ -201,6 +213,21 @@ class WalkFromEnergyMin(VecTask):
 
         # store prev root states now before update
         self.prev_root_states = self.root_states.clone()
+
+        # apply random external force
+        rand = torch.rand(self.num_envs, device=self.device) < self.force_toggle_chance
+        # toggle forces if selected
+        self.apply_external_forces[rand] = ~self.apply_external_forces[rand]
+        force_on = torch.logical_and(rand, self.apply_external_forces)
+        force_off = torch.logical_and(rand, ~self.apply_external_forces)
+
+        self.external_forces_body[force_on] = (torch.rand(3, device=self.device) - 0.5) * 2 * self.force_strength
+        self.external_force_pos_body[force_on] = (torch.rand(3, device=self.device) - 0.5) * self.force_pos_range
+        self.external_forces_body[force_off] = 0
+        self.external_force_pos_body[force_off] = 0
+
+        # (actually) apply random external force
+        self.gym.apply_rigid_body_force_at_pos_tensors(self.sim, gymtorch.unwrap_tensor(self.external_forces), gymtorch.unwrap_tensor(self.external_force_pos), gymapi.LOCAL_SPACE)
 
 
     def post_physics_step(self):
