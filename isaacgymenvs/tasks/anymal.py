@@ -143,6 +143,12 @@ class Anymal(VecTask):
         self.gravity_vec = to_torch(get_axis_params(-1., self.up_axis_idx), device=self.device).repeat((self.num_envs, 1))
         self.actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
 
+        self.apply_external_forces = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False)
+        self.external_forces = torch.zeros(self.num_envs * 13, 3, dtype=torch.float, device=self.device, requires_grad=False)
+        self.external_forces_body = self.external_forces[0::13, :]
+        self.external_force_pos = torch.zeros(self.num_envs * 13, 3, dtype=torch.float, device=self.device, requires_grad=False)
+        self.external_force_pos_body = self.external_force_pos[0::13, :]
+
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
 
     def create_sim(self):
@@ -230,6 +236,22 @@ class Anymal(VecTask):
         self.actions = actions.clone().to(self.device)
         targets = self.action_scale * self.actions + self.default_dof_pos
         self.gym.set_dof_position_target_tensor(self.sim, gymtorch.unwrap_tensor(targets))
+
+        toggle_chance = 0.01 # 1% chance per step to toggle if force is applied or not
+        force_strength = 100 # N
+        pos_range = 0.2 # m
+        rand = torch.rand(self.num_envs) < toggle_chance
+        self.apply_external_forces[rand] = ~self.apply_external_forces[rand]
+        force_on = torch.logical_and(rand, self.apply_external_forces)
+        force_off = torch.logical_and(rand, ~self.apply_external_forces)
+
+        self.external_forces_body[force_on] = (torch.rand(3) - 0.5) * force_strength * 2
+        self.external_force_pos_body[force_on] = (torch.rand(3) - 0.5) * pos_range
+        self.external_forces_body[force_off] = 0
+        self.external_force_pos_body[force_off] = 0
+
+        self.gym.apply_rigid_body_force_at_pos_tensors(self.sim, gymtorch.unwrap_tensor(self.external_forces), gymtorch.unwrap_tensor(self.external_force_pos), gymapi.LOCAL_SPACE)
+
 
     def post_physics_step(self):
         self.progress_buf += 1
