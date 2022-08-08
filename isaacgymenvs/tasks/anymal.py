@@ -245,8 +245,8 @@ class Anymal(VecTask):
         force_on = torch.logical_and(rand, self.apply_external_forces)
         force_off = torch.logical_and(rand, ~self.apply_external_forces)
 
-        self.external_forces_body[force_on] = (torch.rand(3) - 0.5) * force_strength * 2
-        self.external_force_pos_body[force_on] = (torch.rand(3) - 0.5) * pos_range
+        self.external_forces_body[force_on] = (torch.rand(3, device=self.device) - 0.5) * force_strength * 2
+        self.external_force_pos_body[force_on] = (torch.rand(3, device=self.device) - 0.5) * pos_range
         self.external_forces_body[force_off] = 0
         self.external_force_pos_body[force_off] = 0
 
