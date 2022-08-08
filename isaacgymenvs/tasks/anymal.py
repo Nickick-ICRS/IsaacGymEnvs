@@ -240,13 +240,13 @@ class Anymal(VecTask):
         toggle_chance = 0.01 # 1% chance per step to toggle if force is applied or not
         force_strength = 100 # N
         pos_range = 0.2 # m
-        rand = torch.rand(self.num_envs) < toggle_chance
+        rand = torch.rand(self.num_envs, device=self.device) < toggle_chance
         self.apply_external_forces[rand] = ~self.apply_external_forces[rand]
         force_on = torch.logical_and(rand, self.apply_external_forces)
         force_off = torch.logical_and(rand, ~self.apply_external_forces)
 
-        self.external_forces_body[force_on] = (torch.rand(3) - 0.5) * force_strength * 2
-        self.external_force_pos_body[force_on] = (torch.rand(3) - 0.5) * pos_range
+        self.external_forces_body[force_on] = torch.rand(3) - 0.5) * force_strength * 2
+        self.external_force_pos_body[force_on] = torch.rand(3) - 0.5) * pos_range
         self.external_forces_body[force_off] = 0
         self.external_force_pos_body[force_off] = 0
 
