@@ -295,6 +295,30 @@
       <mechanicalReduction>1</mechanicalReduction>
     </actuator>
   </transmission>
+  <link name="front_left_foot_contact_link">
+    <inertial>
+      <mass value="0.01"/>
+      <origin xyz="0 0 0"/>
+      <inertia ixx="1e-9" ixy="0.0" ixz="0.0" iyy="1e-9" iyz="0.0" izz="1e-9"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0"/>
+      <geometry>
+        <sphere radius="0.015"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0"/>
+      <geometry>
+        <sphere radius="0.015"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="front_left_foot_contact_joint" type="fixed">
+    <origin xyz="0 0 -0.105"/>
+    <parent link="front_left_lower_leg_link"/>
+    <child link="front_left_foot_contact_link"/>
+  </joint>
   <link name="front_right_hip_aa_link">
     <inertial>
       <mass value="0.149885"/>
@@ -430,6 +454,30 @@
       <mechanicalReduction>1</mechanicalReduction>
     </actuator>
   </transmission>
+  <link name="front_right_foot_contact_link">
+    <inertial>
+      <mass value="0.01"/>
+      <origin xyz="0 0 0"/>
+      <inertia ixx="1e-9" ixy="0.0" ixz="0.0" iyy="1e-9" iyz="0.0" izz="1e-9"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0"/>
+      <geometry>
+        <sphere radius="0.015"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0"/>
+      <geometry>
+        <sphere radius="0.015"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="front_right_foot_contact_joint" type="fixed">
+    <origin xyz="0 0 -0.105"/>
+    <parent link="front_right_lower_leg_link"/>
+    <child link="front_right_foot_contact_link"/>
+  </joint>
   <link name="rear_left_hip_aa_link">
     <inertial>
       <mass value="0.149885"/>
@@ -565,6 +613,30 @@
       <mechanicalReduction>1</mechanicalReduction>
     </actuator>
   </transmission>
+  <link name="rear_left_foot_contact_link">
+    <inertial>
+      <mass value="0.01"/>
+      <origin xyz="0 0 0"/>
+      <inertia ixx="1e-9" ixy="0.0" ixz="0.0" iyy="1e-9" iyz="0.0" izz="1e-9"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0"/>
+      <geometry>
+        <sphere radius="0.015"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0"/>
+      <geometry>
+        <sphere radius="0.015"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="rear_left_foot_contact_joint" type="fixed">
+    <origin xyz="0 0 -0.135"/>
+    <parent link="rear_left_lower_leg_link"/>
+    <child link="rear_left_foot_contact_link"/>
+  </joint>
   <link name="rear_right_hip_aa_link">
     <inertial>
       <mass value="0.149885"/>
@@ -700,6 +772,30 @@
       <mechanicalReduction>1</mechanicalReduction>
     </actuator>
   </transmission>
+  <link name="rear_right_foot_contact_link">
+    <inertial>
+      <mass value="0.01"/>
+      <origin xyz="0 0 0"/>
+      <inertia ixx="1e-9" ixy="0.0" ixz="0.0" iyy="1e-9" iyz="0.0" izz="1e-9"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0"/>
+      <geometry>
+        <sphere radius="0.015"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0"/>
+      <geometry>
+        <sphere radius="0.015"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="rear_right_foot_contact_joint" type="fixed">
+    <origin xyz="0 0 -0.135"/>
+    <parent link="rear_right_lower_leg_link"/>
+    <child link="rear_right_foot_contact_link"/>
+  </joint>
   <!--<xacro:neck/>-->
   <!--<xacro:head/>-->
 </robot>

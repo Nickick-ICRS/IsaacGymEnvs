@@ -59,7 +59,7 @@ class WalkFromEnergyMin(VecTask):
         # default joint positions
         self.named_default_joint_angles = self.cfg["env"]["defaultJointAngles"]
 
-        self.cfg["env"]["numObservations"] = 63
+        self.cfg["env"]["numObservations"] = 67
         self.cfg["env"]["numActions"] = 16
 
         # random external force parameters
@@ -156,7 +156,7 @@ class WalkFromEnergyMin(VecTask):
 
         asset_options = gymapi.AssetOptions()
         asset_options.default_dof_drive_mode = self.cfg["env"]["urdfAsset"]["defaultDofDriveMode"]
-        asset_options.collapse_fixed_joints = True
+        asset_options.collapse_fixed_joints = False
         asset_options.replace_cylinder_with_capsule = True
         asset_options.flip_visual_attachments = True
         asset_options.fix_base_link = self.cfg["env"]["urdfAsset"]["fixBaseLink"]
@@ -176,8 +176,10 @@ class WalkFromEnergyMin(VecTask):
 
         body_names = self.gym.get_asset_rigid_body_names(ester_asset)
         self.dof_names = self.gym.get_asset_dof_names(ester_asset)
-        contact_fail_names = [s for s in body_names if "lower" not in s] # all non-lower leg/foot rigid bodies
+        contact_fail_names = [s for s in body_names if "lower" not in s and "foot" not in s] # all non-lower leg/foot rigid bodies
+        foot_names = [s for s in body_names if "foot" in s]
         self.contact_fail_indices = torch.zeros(len(contact_fail_names), dtype=torch.long, device=self.device, requires_grad=False)
+        self.foot_contact_sensor_indices = torch.zeros(len(foot_names), dtype=torch.long, device=self.device, requires_grad=False)
         self.base_index = 0
 
         dof_props = self.gym.get_asset_dof_properties(ester_asset)
@@ -202,6 +204,8 @@ class WalkFromEnergyMin(VecTask):
 
         for i in range(len(contact_fail_names)):
             self.contact_fail_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.ester_handles[0], contact_fail_names[i])
+        for i in range(len(foot_names)):
+            self.foot_contact_sensor_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.ester_handles[0], foot_names[i])
 
         self.base_index = self.gym.find_actor_rigid_body_handle(self.envs[0], self.ester_handles[0], "base")
 
@@ -273,6 +277,8 @@ class WalkFromEnergyMin(VecTask):
             self.default_dof_pos,
             self.dof_vel,
             self.torques,
+            self.contact_forces,
+            self.foot_contact_sensor_indices,
             self.gravity_vec,
             self.actions,
             # scales
@@ -375,6 +381,8 @@ def compute_ester_observations(
     default_dof_pos,
     dof_vel,
     torques,
+    contact_forces,
+    foot_contact_sensor_indices,
     gravity_vec,
     actions,
     lin_vel_scale,
@@ -385,7 +393,7 @@ def compute_ester_observations(
     torques_scale,
     dt
 ):
-    # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, float, float, float, float, float, float, float) -> Tensor
+    # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, float, float, float, float, float, float, float) -> Tensor
     base_quat = root_states[:, 3:7]
     base_lin_vel = quat_rotate_inverse(base_quat, root_states[:, 7:10])
     prev_lin_vel = quat_rotate_inverse(prev_root_states[:, 3:7], prev_root_states[:, 7:10])
@@ -396,6 +404,8 @@ def compute_ester_observations(
     dof_pos_scaled = (dof_pos - default_dof_pos) * dof_pos_scale
     commands_scaled = commands*torch.tensor([lin_vel_scale, lin_vel_scale, ang_vel_scale], requires_grad=False, device=commands.device)
 
+    foot_contacts = torch.any(contact_forces[:, foot_contact_sensor_indices, :] > 1., 2)
+
     obs = torch.cat((base_lin_vel,
                      base_lin_acc,
                      base_ang_vel,
@@ -404,6 +414,7 @@ def compute_ester_observations(
                      dof_pos_scaled,
                      dof_vel*dof_vel_scale,
     #                 torques*torques_scale,
+                     foot_contacts,
                      actions),
                      dim=1)
 
