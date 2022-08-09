@@ -4,6 +4,12 @@
 <!-- |    EDITING THIS FILE BY HAND IS NOT RECOMMENDED                                 | -->
 <!-- =================================================================================== -->
 <robot name="ester">
+  <gazebo>
+    <plugin filename="libgazebo_ros_control.so" name="gazebo_ros_control">
+      <robotNamespace>/ester</robotNamespace>
+    </plugin>
+    <selfCollide>false</selfCollide>
+  </gazebo>
   <!-- Dummy parent link for Gazebo -->
   <link name="base_link"/>
   <link name="spine_center_link">
@@ -15,13 +21,13 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/spine/spine_center.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/spine/spine_center.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/spine/spine_center.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/spine/spine_center.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -39,24 +45,34 @@
     <visual>
       <origin xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/spine/front_spine_pitch.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/spine/front_spine_pitch.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
     <collision>
       <origin xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/spine/front_spine_pitch.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/spine/front_spine_pitch.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
   <joint name="front_spine_pitch_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0.045 0.025 -0.015"/>
     <axis xyz="0 1 0"/>
-    <limit effort="2.5" lower="-3.141592653589793" upper="3.141592653589793" velocity="83.775"/>
+    <limit effort="2.5" lower="-0.2617993877991494" upper="0.2617993877991494" velocity="83.775"/>
     <dynamics damping="0.05" friction="0.1"/>
     <parent link="spine_center_link"/>
     <child link="front_spine_pitch_link"/>
   </joint>
+  <transmission name="front_spine_pitch_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="front_spine_pitch_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="front_spine_pitch_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
   <link name="rear_spine_pitch_link">
     <inertial>
       <mass value="0.153731"/>
@@ -66,24 +82,34 @@
     <visual>
       <origin xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/spine/rear_spine_pitch.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/spine/rear_spine_pitch.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
     <collision>
       <origin xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/spine/rear_spine_pitch.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/spine/rear_spine_pitch.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
   <joint name="rear_spine_pitch_joint" type="revolute">
     <origin rpy="0 0 0" xyz="-0.045 -0.025 -0.015"/>
     <axis xyz="0 1 0"/>
-    <limit effort="2.5" lower="-3.141592653589793" upper="3.141592653589793" velocity="83.775"/>
+    <limit effort="2.5" lower="-0.2617993877991494" upper="0.2617993877991494" velocity="83.775"/>
     <dynamics damping="0.05" friction="0.1"/>
     <parent link="spine_center_link"/>
     <child link="rear_spine_pitch_link"/>
   </joint>
+  <transmission name="rear_spine_pitch_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="rear_spine_pitch_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="rear_spine_pitch_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
   <link name="front_spine_yaw_link">
     <inertial>
       <mass value="0.1"/>
@@ -94,11 +120,21 @@
   <joint name="front_spine_yaw_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 -0.02505 0.02115"/>
     <axis xyz="0 0 1"/>
-    <limit effort="2.5" lower="-3.141592653589793" upper="3.141592653589793" velocity="83.775"/>
+    <limit effort="2.5" lower="-0.2617993877991494" upper="0.2617993877991494" velocity="83.775"/>
     <dynamics damping="0.05" friction="0.1"/>
     <parent link="front_spine_pitch_link"/>
     <child link="front_spine_yaw_link"/>
   </joint>
+  <transmission name="front_spine_yaw_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="front_spine_yaw_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="front_spine_yaw_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
   <link name="rear_spine_yaw_link">
     <inertial>
       <mass value="0.1"/>
@@ -109,11 +145,21 @@
   <joint name="rear_spine_yaw_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 0.02505 0.02115"/>
     <axis xyz="0 0 1"/>
-    <limit effort="2.5" lower="-3.141592653589793" upper="3.141592653589793" velocity="83.775"/>
+    <limit effort="2.5" lower="-0.2617993877991494" upper="0.2617993877991494" velocity="83.775"/>
     <dynamics damping="0.05" friction="0.1"/>
     <parent link="rear_spine_pitch_link"/>
     <child link="rear_spine_yaw_link"/>
   </joint>
+  <transmission name="rear_spine_yaw_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="rear_spine_yaw_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="rear_spine_yaw_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
   <link name="front_left_hip_aa_link">
     <inertial>
       <mass value="0.149885"/>
@@ -123,13 +169,13 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/front_hip_aa.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/front_hip_aa.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/front_hip_aa.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/front_hip_aa.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -147,24 +193,34 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/front_left_hip_fe.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/front_left_hip_fe.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/front_left_hip_fe.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/front_left_hip_fe.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
   <joint name="front_left_hip_fe_joint" type="revolute">
     <origin rpy="0 0 0" xyz="-0.0175 -0.0878 0"/>
     <axis xyz="1 0 0"/>
-    <limit effort="2.5" lower="-3.141592653589793" upper="3.141592653589793" velocity="83.775"/>
+    <limit effort="2.5" lower="-0.7853981633974483" upper="0.17453292519943295" velocity="83.775"/>
     <dynamics damping="0.05" friction="0.1"/>
     <parent link="front_left_hip_aa_link"/>
     <child link="front_left_hip_fe_link"/>
   </joint>
+  <transmission name="front_left_hip_fe_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="front_left_hip_fe_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="front_left_hip_fe_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
   <link name="front_left_upper_leg_link">
     <inertial>
       <mass value="0.154958"/>
@@ -174,24 +230,34 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/front_left_upper_leg.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/front_left_upper_leg.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/front_left_upper_leg.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/front_left_upper_leg.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
   <joint name="front_left_upper_leg_joint" type="revolute">
     <origin rpy="0 0.3490658503988659 3.141592653589793" xyz="-0.0773 -0.013 0"/>
     <axis xyz="0 1 0"/>
-    <limit effort="2.5" lower="-3.141592653589793" upper="3.141592653589793" velocity="83.775"/>
+    <limit effort="2.5" lower="-1.5707963267948966" upper="1.5707963267948966" velocity="83.775"/>
     <dynamics damping="0.05" friction="0.1"/>
     <parent link="front_left_hip_fe_link"/>
     <child link="front_left_upper_leg_link"/>
   </joint>
+  <transmission name="front_left_upper_leg_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="front_left_upper_leg_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="front_left_upper_leg_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
   <link name="front_left_lower_leg_link">
     <inertial>
       <mass value="0.023609"/>
@@ -201,24 +267,34 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/front_lower_leg.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/front_lower_leg.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/front_lower_leg.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/front_lower_leg.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
   <joint name="front_left_lower_leg_joint" type="revolute">
     <axis xyz="0 1 0"/>
-    <limit effort="2.5" lower="-3.1415926" upper="3.1514926" velocity="83.775"/>
+    <limit effort="2.5" lower="-1.5707963267948966" upper="1.5707963267948966" velocity="83.775"/>
     <dynamics damping="0.05" friction="0.1"/>
     <origin rpy="0 0 0" xyz="0 0.0285 -0.1232"/>
     <parent link="front_left_upper_leg_link"/>
     <child link="front_left_lower_leg_link"/>
   </joint>
+  <transmission name="front_left_lower_leg_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="front_left_lower_leg_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="front_left_lower_leg_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
   <link name="front_right_hip_aa_link">
     <inertial>
       <mass value="0.149885"/>
@@ -228,13 +304,13 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/front_hip_aa.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/front_hip_aa.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/front_hip_aa.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/front_hip_aa.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -252,24 +328,34 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/front_right_hip_fe.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/front_right_hip_fe.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/front_right_hip_fe.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/front_right_hip_fe.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
   <joint name="front_right_hip_fe_joint" type="revolute">
     <origin rpy="0 0 3.141592653589793" xyz="0.0135 -0.0878 0"/>
     <axis xyz="1 0 0"/>
-    <limit effort="2.5" lower="-3.141592653589793" upper="3.141592653589793" velocity="83.775"/>
+    <limit effort="2.5" lower="-0.17453292519943295" upper="0.7853981633974483" velocity="83.775"/>
     <dynamics damping="0.05" friction="0.1"/>
     <parent link="front_right_hip_aa_link"/>
     <child link="front_right_hip_fe_link"/>
   </joint>
+  <transmission name="front_right_hip_fe_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="front_right_hip_fe_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="front_right_hip_fe_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
   <link name="front_right_upper_leg_link">
     <inertial>
       <mass value="0.154958"/>
@@ -279,24 +365,34 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/front_right_upper_leg.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/front_right_upper_leg.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/front_right_upper_leg.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/front_right_upper_leg.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
   <joint name="front_right_upper_leg_joint" type="revolute">
     <origin rpy="0 0.3490658503988659 3.141592653589793" xyz="-0.0773 0.013 0"/>
     <axis xyz="0 1 0"/>
-    <limit effort="2.5" lower="-3.141592653589793" upper="3.141592653589793" velocity="83.775"/>
+    <limit effort="2.5" lower="-1.5707963267948966" upper="1.5707963267948966" velocity="83.775"/>
     <dynamics damping="0.05" friction="0.1"/>
     <parent link="front_right_hip_fe_link"/>
     <child link="front_right_upper_leg_link"/>
   </joint>
+  <transmission name="front_right_upper_leg_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="front_right_upper_leg_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="front_right_upper_leg_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
   <link name="front_right_lower_leg_link">
     <inertial>
       <mass value="0.023609"/>
@@ -306,24 +402,34 @@
     <visual>
       <origin rpy="0 0 3.141592653589793" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/front_lower_leg.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/front_lower_leg.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 3.141592653589793" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/front_lower_leg.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/front_lower_leg.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
   <joint name="front_right_lower_leg_joint" type="revolute">
     <axis xyz="0 1 0"/>
-    <limit effort="2.5" lower="-3.1415926" upper="3.1514926" velocity="83.775"/>
+    <limit effort="2.5" lower="-1.5707963267948966" upper="1.5707963267948966" velocity="83.775"/>
     <dynamics damping="0.05" friction="0.1"/>
     <origin rpy="0 0 0" xyz="0 -0.0285 -0.1232"/>
     <parent link="front_right_upper_leg_link"/>
     <child link="front_right_lower_leg_link"/>
   </joint>
+  <transmission name="front_right_lower_leg_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="front_right_lower_leg_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="front_right_lower_leg_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
   <link name="rear_left_hip_aa_link">
     <inertial>
       <mass value="0.149885"/>
@@ -333,13 +439,13 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/front_hip_aa.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/front_hip_aa.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/front_hip_aa.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/front_hip_aa.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -357,24 +463,34 @@
     <visual>
       <origin rpy="0 0 3.141592653589793" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/rear_right_hip_fe.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/rear_right_hip_fe.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 3.141592653589793" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/rear_right_hip_fe.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/rear_right_hip_fe.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
   <joint name="rear_left_hip_fe_joint" type="revolute">
     <origin rpy="0 0 0" xyz="-0.0175 -0.0878 0"/>
     <axis xyz="1 0 0"/>
-    <limit effort="2.5" lower="-3.141592653589793" upper="3.141592653589793" velocity="83.775"/>
+    <limit effort="2.5" lower="-0.7853981633974483" upper="0.17453292519943295" velocity="83.775"/>
     <dynamics damping="0.05" friction="0.1"/>
     <parent link="rear_left_hip_aa_link"/>
     <child link="rear_left_hip_fe_link"/>
   </joint>
+  <transmission name="rear_left_hip_fe_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="rear_left_hip_fe_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="rear_left_hip_fe_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
   <link name="rear_left_upper_leg_link">
     <inertial>
       <mass value="0.160729"/>
@@ -384,24 +500,34 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/rear_left_upper_leg.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/rear_left_upper_leg.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/rear_left_upper_leg.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/rear_left_upper_leg.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
   <joint name="rear_left_upper_leg_joint" type="revolute">
     <origin rpy="0 0 3.141592653589793" xyz="-0.0259 -0.013 0"/>
     <axis xyz="0 1 0"/>
-    <limit effort="2.5" lower="-3.141592653589793" upper="3.141592653589793" velocity="83.775"/>
+    <limit effort="2.5" lower="-1.5707963267948966" upper="1.5707963267948966" velocity="83.775"/>
     <dynamics damping="0.05" friction="0.1"/>
     <parent link="rear_left_hip_fe_link"/>
     <child link="rear_left_upper_leg_link"/>
   </joint>
+  <transmission name="rear_left_upper_leg_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="rear_left_upper_leg_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="rear_left_upper_leg_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
   <link name="rear_left_lower_leg_link">
     <inertial>
       <mass value="0.028708"/>
@@ -411,24 +537,34 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/rear_lower_leg.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/rear_lower_leg.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/rear_lower_leg.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/rear_lower_leg.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
   <joint name="rear_left_lower_leg_joint" type="revolute">
     <axis xyz="0 1 0"/>
-    <limit effort="2.5" lower="-3.1415926" upper="3.1514926" velocity="83.775"/>
+    <limit effort="2.5" lower="-1.5707963267948966" upper="1.5707963267948966" velocity="83.775"/>
     <dynamics damping="0.05" friction="0.1"/>
     <origin rpy="0 0 0" xyz="0 0.0285 -0.134"/>
     <parent link="rear_left_upper_leg_link"/>
     <child link="rear_left_lower_leg_link"/>
   </joint>
+  <transmission name="rear_left_lower_leg_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="rear_left_lower_leg_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="rear_left_lower_leg_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
   <link name="rear_right_hip_aa_link">
     <inertial>
       <mass value="0.149885"/>
@@ -438,13 +574,13 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/front_hip_aa.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/front_hip_aa.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/front_hip_aa.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/front_hip_aa.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -462,24 +598,34 @@
     <visual>
       <origin rpy="0 0 3.141592653589793" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/rear_left_hip_fe.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/rear_left_hip_fe.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 3.141592653589793" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/rear_left_hip_fe.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/rear_left_hip_fe.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
   <joint name="rear_right_hip_fe_joint" type="revolute">
     <origin rpy="0 0 3.141592653589793" xyz="0.0135 -0.0878 0"/>
     <axis xyz="1 0 0"/>
-    <limit effort="2.5" lower="-3.141592653589793" upper="3.141592653589793" velocity="83.775"/>
+    <limit effort="2.5" lower="-0.17453292519943295" upper="0.7853981633974483" velocity="83.775"/>
     <dynamics damping="0.05" friction="0.1"/>
     <parent link="rear_right_hip_aa_link"/>
     <child link="rear_right_hip_fe_link"/>
   </joint>
+  <transmission name="rear_right_hip_fe_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="rear_right_hip_fe_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="rear_right_hip_fe_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
   <link name="rear_right_upper_leg_link">
     <inertial>
       <mass value="0.160729"/>
@@ -489,24 +635,34 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/rear_right_upper_leg.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/rear_right_upper_leg.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/rear_right_upper_leg.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/rear_right_upper_leg.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
   <joint name="rear_right_upper_leg_joint" type="revolute">
     <origin rpy="0 0 3.141592653589793" xyz="-0.0259 0.013 0"/>
     <axis xyz="0 1 0"/>
-    <limit effort="2.5" lower="-3.141592653589793" upper="3.141592653589793" velocity="83.775"/>
+    <limit effort="2.5" lower="-1.5707963267948966" upper="1.5707963267948966" velocity="83.775"/>
     <dynamics damping="0.05" friction="0.1"/>
     <parent link="rear_right_hip_fe_link"/>
     <child link="rear_right_upper_leg_link"/>
   </joint>
+  <transmission name="rear_right_upper_leg_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="rear_right_upper_leg_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="rear_right_upper_leg_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
   <link name="rear_right_lower_leg_link">
     <inertial>
       <mass value="0.028708"/>
@@ -516,24 +672,34 @@
     <visual>
       <origin rpy="0 0 3.141592653589793" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/rear_lower_leg.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/rear_lower_leg.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 3.141592653589793" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/leg/rear_lower_leg.obj" scale="0.001 0.001 0.001"/>
+        <mesh filename="../meshes/leg/rear_lower_leg.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
   <joint name="rear_right_lower_leg_joint" type="revolute">
     <axis xyz="0 1 0"/>
-    <limit effort="2.5" lower="-3.1415926" upper="3.1514926" velocity="83.775"/>
+    <limit effort="2.5" lower="-1.5707963267948966" upper="1.5707963267948966" velocity="83.775"/>
     <dynamics damping="0.05" friction="0.1"/>
     <origin rpy="0 0 0" xyz="0 -0.0285 -0.134"/>
     <parent link="rear_right_upper_leg_link"/>
     <child link="rear_right_lower_leg_link"/>
   </joint>
+  <transmission name="rear_right_lower_leg_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="rear_right_lower_leg_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="rear_right_lower_leg_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
   <!--<xacro:neck/>-->
   <!--<xacro:head/>-->
 </robot>
