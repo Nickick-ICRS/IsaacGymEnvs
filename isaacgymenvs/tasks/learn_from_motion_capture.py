@@ -249,7 +249,7 @@ class LearnFromMotionCapture(VecTask):
 
         data *= scale
 
-        return torch.from_numpy(data[trim_start:trim_end])
+        return torch.from_numpy(data[trim_start:trim_end]).to(self.device)
 
     def pre_physics_step(self, actions):
         self.actions = actions.clone().to(self.device)
@@ -331,7 +331,7 @@ class LearnFromMotionCapture(VecTask):
 
     def get_next_frames(self):
         self.current_frames += self.frame_rate_multipliers * self.time_per_frame * self.dt
-        reset = np.zeros(self.num_envs, dtype=np.bool)
+        reset = torch.zeros(self.num_envs, dtype=np.bool, device=self.device)
         # wrap frames if at end of mocap_data
         remainder = self.current_frames % 1
         overflow = self.current_frames >= self.mocap_data.shape[0]
@@ -358,7 +358,7 @@ class LearnFromMotionCapture(VecTask):
         # Calculate rotation matrix from frame forwards to ester forwards
         cos = torch.clamp((frame_forwards * ester_forwards).sum(dim=-1).squeeze(), min=-1, max=1)
         sin = torch.sin(torch.acos(cos))
-        R = torch.zeros((cos.shape[0], 2, 2), dtype=torch.double)
+        R = torch.zeros((cos.shape[0], 2, 2), dtype=torch.double, device=self.device)
         R[:, 0, 0] = cos
         R[:, 0, 1] = -sin
         R[:, 1, 0] = sin
