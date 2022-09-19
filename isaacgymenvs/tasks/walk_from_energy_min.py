@@ -115,7 +115,7 @@ class WalkFromEnergyMin(VecTask):
         for i in range(self.cfg["env"]["numActions"]):
             name = self.dof_names[i]
             angle = self.named_default_joint_angles[name]
-            self.default_dof_pos[:, 1] = angle
+            self.default_dof_pos[:, i] = angle
 
         # additional data used later on
         self.extras = {}
@@ -158,7 +158,7 @@ class WalkFromEnergyMin(VecTask):
         asset_options.default_dof_drive_mode = self.cfg["env"]["urdfAsset"]["defaultDofDriveMode"]
         asset_options.collapse_fixed_joints = False
         asset_options.replace_cylinder_with_capsule = True
-        asset_options.flip_visual_attachments = True
+        asset_options.flip_visual_attachments = False
         asset_options.fix_base_link = self.cfg["env"]["urdfAsset"]["fixBaseLink"]
         asset_options.density = 0.001
         asset_options.angular_damping = 0.0
@@ -261,6 +261,26 @@ class WalkFromEnergyMin(VecTask):
             self.max_episode_length,
         )
 
+        self.calculate_avg_torques(self.torques, self.reset_buf)
+
+    
+    def calculate_avg_torques(self, torques, reset):
+        try: self.torque_avgs
+        except AttributeError:
+            self.torque_avgs = torch.zeros_like(torques, device=self.device, requires_grad=False)
+            self.robot_iteration = torch.zeros(self.num_envs, dtype=torch.long, device=self.device, requires_grad=False)
+
+        self.torque_avgs += torques
+        self.robot_iteration += 1
+
+        if torch.any(reset == True):
+            summed_torques = self.torque_avgs[reset == True]
+            summed_torques = (summed_torques.t() / self.robot_iteration[reset == True]).t()
+            print(summed_torques)
+
+            self.torque_avgs[reset == True] = 0
+            self.robot_iteration[reset == True] = 0
+
 
     def compute_observations(self):
         self.gym.refresh_dof_state_tensor(self.sim)
@@ -362,10 +382,9 @@ def compute_ester_reward(
 
     # reset agents
     # if base contact forces exist we fell over
-    #reset = torch.norm(contact_forces[:, base_index, :], dim=1) > 1.
+    reset = torch.norm(contact_forces[:, base_index, :], dim=1) > 1.
     # if non-foot contact forces exist we fell over
-    # reset = reset | torch.any(torch.norm(contact_forces[:, contact_fail_indices, :], dim=2) > 1., dim=1)
-    reset = torch.any(torch.norm(contact_forces[:, contact_fail_indices, :], dim=2) > 1., dim=1)
+    reset = reset | torch.any(torch.norm(contact_forces[:, contact_fail_indices, :], dim=2) > 1., dim=1)
     timeout = episode_lengths >= max_episode_length -1
     reset = reset | timeout
     

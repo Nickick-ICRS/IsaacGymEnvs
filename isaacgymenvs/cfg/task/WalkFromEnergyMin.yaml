@@ -11,7 +11,7 @@ env:
   clipActions: 1.0
 
   force:
-    toggleChance: 0.01 # [0-1]
+    toggleChance: -0.01 # [0-1]
     maxStrength: 20 # [N]
     posRange: 0.1 # [m]
 
@@ -87,7 +87,7 @@ env:
   # viewer cam:
   viewer:
     refEnv: 0
-    pos: [-1., -1., 0.5]  # [m]
+    pos: [-2., -2., 2.]  # [m]
     lookat: [1., 1, 0.25]  # [m]
 
   # set to True if you use camera sensors in the environment
