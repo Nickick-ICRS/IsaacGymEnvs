@@ -10,6 +10,11 @@ from isaacgymenvs.tasks.base.vec_task import VecTask
 
 from typing import Tuple, Dict
 
+MOCAP_SPINE_CENTER = 2
+ESTER_SPINE_CENTER = 0
+MOCAP_FORWARDS = 3
+ESTER_FORWARDS = 4
+
 class LearnFromMotionCapture(VecTask):
     
     def __init__(self, cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render):
@@ -339,7 +344,32 @@ class LearnFromMotionCapture(VecTask):
         frame_2 = self.mocap_data[next_frame]
         self.frames = torch.lerp(frame_1, frame_2, remainder[:, None, None])
 
-        # TODO: Transform frames to match ester transform
+        # Transform frames to match ester transform
+        # subtract center position
+        self.frames = self.frames - self.frames[:, MOCAP_SPINE_CENTER, :][:, None, :]
+
+        # we care about the XY vector from SPINE_CENTER to FRONT
+        frame_forwards = self.frames[:, MOCAP_FORWARDS, :2]
+        frame_forwards = (frame_forwards.t() / torch.linalg.norm(frame_forwards, dim=-1)).t()
+
+        ester_forwards = self.link_states[:, ESTER_FORWARDS, :2] - self.link_states[:, ESTER_SPINE_CENTER, :2]
+        ester_forwards = (ester_forwards.t() / torch.linalg.norm(ester_forwards, dim=-1)).t()
+
+        # Calculate rotation matrix from frame forwards to ester forwards
+        cos = torch.clamp((frame_forwards * ester_forwards).sum(dim=-1).squeeze(), min=-1, max=1)
+        sin = torch.sin(torch.acos(cos))
+        R = torch.zeros((cos.shape[0], 2, 2), dtype=torch.double)
+        R[:, 0, 0] = cos
+        R[:, 0, 1] = -sin
+        R[:, 1, 0] = sin
+        R[:, 1, 1] = cos
+
+        # Apply rotation matrix
+        # V @ R.t() is equivalent to (R @ V.t()).t()
+        self.frames[:, :, :2] = self.frames[:, :, :2] @ torch.transpose(R, 1, 2)
+        # Add ester root positions
+        self.frames += self.link_states[:, ESTER_SPINE_CENTER, :3][:, None, :]
+
         return reset
 
 
