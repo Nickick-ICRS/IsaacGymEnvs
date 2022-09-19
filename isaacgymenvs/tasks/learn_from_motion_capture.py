@@ -302,8 +302,8 @@ class LearnFromMotionCapture(VecTask):
             self.max_episode_length,
         )
 
-        self.calculate_avg_torques(self.torques, self.reset_buf)
         self.reset_buf |= self.get_next_frames()
+        #self.calculate_avg_torques(self.torques, self.reset_buf)
 
     
     def calculate_avg_torques(self, torques, reset):
@@ -325,7 +325,7 @@ class LearnFromMotionCapture(VecTask):
 
 
     def get_next_frames(self):
-        self.current_frames += self.frame_rate_multipliers / self.time_per_frame
+        self.current_frames += self.frame_rate_multipliers * self.time_per_frame * self.dt
         reset = np.zeros(self.num_envs, dtype=np.bool)
         # wrap frames if at end of mocap_data
         remainder = self.current_frames % 1
@@ -339,6 +339,7 @@ class LearnFromMotionCapture(VecTask):
         frame_2 = self.mocap_data[next_frame]
         self.frames = torch.lerp(frame_1, frame_2, remainder[:, None, None])
 
+        # TODO: Transform frames to match ester transform
         return reset
 
 
@@ -576,9 +577,10 @@ def compute_ester_reward(
                    rew_scales["energy"] * energy_rew
     total_reward = torch.clip(total_reward, 0., None)
 
-    reset = torch.norm(contact_forces[:, base_index, :], dim=1) > 1.
+    #reset = torch.norm(contact_forces[:, base_index, :], dim=1) > 1.
     # if non-foot contact forces exist we fell over
-    reset = reset | torch.any(torch.norm(contact_forces[:, contact_fail_indices, :], dim=2) > 1., dim=1)
+    reset = torch.any(torch.norm(contact_forces[:, contact_fail_indices, :], dim=2) > 1., dim=1)
+    #reset = reset | torch.any(torch.norm(contact_forces[:, contact_fail_indices, :], dim=2) > 1., dim=1)
     # if we timeout the episode is over
     timeout = episode_lengths >= max_episode_length -1
     reset = reset | timeout
