@@ -510,6 +510,18 @@ def split_into_points(
             mB = o_A + o_axis * (torch.linalg.norm(mD - o_C) * o_axis_dot)[:, None]
 
             o_chain_it += 1
+            if torch.any(o_chain_it + 1 >= len(chain)):
+                print("===========================")
+                print(o_links)
+                print(r_overshot)
+                print(chain)
+                print(o_chain_it)
+                print(o_chain_it + 1)
+                print(i)
+                print("===========================")
+                # temporary solution
+                points[:, i+1:-1, :] = chain[-1]
+                break
             o_chain_axis_full = o_links[r_overshot, chain[o_chain_it+1]] - o_links[r_overshot, chain[o_chain_it]]
             o_chain_axis = torch.nn.functional.normalize(o_chain_axis_full, dim=1)
             chain_mag[overshot] = torch.linalg.norm(o_chain_axis_full, dim=1)
