@@ -613,18 +613,18 @@ def compute_ester_reward(
     max_episode_length,
 ):
     # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, List[List[int]], List[List[int]], dict[str, float], int, int) -> Tuple[Tensor, Tensor]
-    int_err = torch.zeros((link_states.shape[0]), dtype=torch.float32, device=link_states.device)
-    for ester_chain, mocap_chain in zip(ester_chain_indices, mocap_chain_indices):
-        int_err += integrate_err(link_states[:, :, :3], ester_chain, mocap_frames, mocap_chain)
+    #int_err = torch.zeros((link_states.shape[0]), dtype=torch.float32, device=link_states.device)
+    #for ester_chain, mocap_chain in zip(ester_chain_indices, mocap_chain_indices):
+    #    int_err += integrate_err(link_states[:, :, :3], ester_chain, mocap_frames, mocap_chain)
 
-    chain_rew = torch.exp(-int_err)
+    #chain_rew = torch.exp(-int_err)
 
     foot_rew = torch.exp(-torch.sum(torch.linalg.norm(link_states[:, ester_foot_indices, :3] - mocap_frames[:, mocap_foot_indices, :], dim=-1), dim=-1))
 
     energy_rew = torch.exp(-torch.sum(torch.square(torques), dim=-1)/0.25)
 
-    total_reward = rew_scales["chainError"] * chain_rew + \
-                   rew_scales["footError"] * foot_rew + \
+    # rew_scales["chainError"] * chain_rew + \
+    total_reward = rew_scales["footError"] * foot_rew + \
                    rew_scales["energy"] * energy_rew
     total_reward = torch.clip(total_reward, 0., None)
 
