@@ -286,7 +286,7 @@ class LearnFromMotionCapture(VecTask):
         self.compute_reward(self.actions)
 
 
-    def compute_reward(self, actions):
+    def compute_reward(self, actions): 
         self.rew_buf[:], self.reset_buf[:] = compute_ester_reward(
             # tensors
             self.link_states,
@@ -618,9 +618,13 @@ def compute_ester_reward(
     #    int_err += integrate_err(link_states[:, :, :3], ester_chain, mocap_frames, mocap_chain)
 
     #chain_rew = torch.exp(-int_err)
-
-    foot_rew = torch.exp(-torch.sum(torch.linalg.norm(link_states[:, ester_foot_indices, :3] - mocap_frames[:, mocap_foot_indices, :], dim=-1), dim=-1))
-
+    base_quat = link_states[:, 0, 3:7]
+    rel_foot_pos = link_states[:, ester_foot_indices, :3] - link_states[:, 0, :3].reshape(-1, 1, 3).repeat(1, len(ester_foot_indices), 1)
+    mocap_foot_pos = mocap_frames[:, mocap_foot_indices, :]
+    for i in range(rel_foot_pos.shape[1]):
+        rel_foot_pos[:, i, :] = quat_rotate_inverse(base_quat, rel_foot_pos[:, i, :])
+    foot_err = torch.linalg.norm(rel_foot_pos - mocap_foot_pos, dim=-1)
+    foot_rew = torch.exp(-torch.sum(foot_err, dim=-1))
     energy_rew = torch.exp(-torch.sum(torch.square(torques), dim=-1)/0.25)
 
     # rew_scales["chainError"] * chain_rew + \
