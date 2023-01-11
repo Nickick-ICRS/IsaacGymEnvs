@@ -2,6 +2,8 @@ import numpy as np
 import os
 import torch
 
+from gym import spaces
+
 from isaacgym import gymtorch
 from isaacgym import gymapi
 from isaacgym.torch_utils import *
@@ -10,148 +12,76 @@ from isaacgymenvs.tasks.base.vec_task import VecTask
 
 from typing import Tuple, Dict
 
+import numpy as np
+import matplotlib.pyplot as plt
+
+fig, ax = plt.subplots()
+
 class WalkFromEnergyMin(VecTask):
-    
-    def __init__(self, cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render):
-        
+    def plot_actions(self, actions):
+        return
+        counts, bins = np.histogram(actions.cpu().flatten().numpy())
+        plt.stairs(counts, bins)
+
+        plt.show()
+
+    def __init__(
+            self, cfg, rl_device, sim_device, graphics_device_id, headless,
+            virtual_screen_capture, force_render):
+
+        self.plt_data = []
+
         self.cfg = cfg
 
-        # normalization parameters
-        self.lin_vel_scale = self.cfg["env"]["learn"]["linVelScale"]
-        self.lin_acc_scale = self.cfg["env"]["learn"]["linAccScale"]
-        self.ang_vel_scale = self.cfg["env"]["learn"]["angVelScale"]
+        self._load_config()
 
-        self.dof_pos_scale = self.cfg["env"]["learn"]["dofPosScale"]
-        self.dof_vel_scale = self.cfg["env"]["learn"]["dofVelScale"]
-        self.torques_scale = self.cfg["env"]["learn"]["dofEffScale"]
-        self.action_scale = self.cfg["env"]["learn"]["actionScale"]
+        super().__init__(
+            config=self.cfg, rl_device=rl_device, sim_device=sim_device,
+            graphics_device_id=graphics_device_id, headless=headless,
+            virtual_screen_capture=virtual_screen_capture,
+            force_render=force_render)
 
-        # reward scales
-        self.rew_scales = {}
-        self.rew_scales["lin_vel"] = self.cfg["env"]["learn"]["linVelRewardScale"]
-        self.rew_scales["ang_vel"] = self.cfg["env"]["learn"]["angVelRewardScale"]
-#        self.rew_scales["pos"] = self.cfg["env"]["learn"]["posRewardScale"]
-        self.rew_scales["energy"] = self.cfg["env"]["learn"]["energyRewardScale"]
-
-        # randomization
-        self.randomization_params = self.cfg["task"]["randomization_params"]
-        self.randomize = self.cfg["task"]["randomize"]
-
-        # command ranges
-        self.command_x_range = self.cfg["env"]["cmdVelRanges"]["lin_x"]
-        self.command_y_range = self.cfg["env"]["cmdVelRanges"]["lin_y"]
-        self.command_yaw_range = self.cfg["env"]["cmdVelRanges"]["ang_z"]
-
-        # plane params
-        self.plane_static_friction = self.cfg["env"]["plane"]["staticFriction"]
-        self.plane_dynamic_friction = self.cfg["env"]["plane"]["dynamicFriction"]
-        self.plane_restitution = self.cfg["env"]["plane"]["restitution"]
-
-        # base initialisation state
-        pos = self.cfg["env"]["baseInitState"]["pos"]
-        rot = self.cfg["env"]["baseInitState"]["rot"]
-        v_lin = self.cfg["env"]["baseInitState"]["vLin"]
-        v_ang = self.cfg["env"]["baseInitState"]["vAng"]
-        state = pos + rot + v_lin + v_ang
-
-        self.base_init_state = state
-
-        # default joint positions
-        self.named_default_joint_angles = self.cfg["env"]["defaultJointAngles"]
-
-        self.cfg["env"]["numObservations"] = 67
-        self.cfg["env"]["numActions"] = 16
-
-        # random external force parameters
-        self.force_toggle_chance = self.cfg["env"]["force"]["toggleChance"] # per step
-        self.force_strength = self.cfg["env"]["force"]["maxStrength"] # per axis
-        self.force_pos_range = self.cfg["env"]["force"]["posRange"] # diameter
-
-        super().__init__(config=self.cfg, rl_device=rl_device, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless, virtual_screen_capture=virtual_screen_capture, force_render=force_render)
-
-        # other
         self.dt = self.sim_params.dt
-        self.max_episode_length_s = self.cfg["env"]["learn"]["episodeLength_s"]
-        self.max_episode_length = int(self.max_episode_length_s / self.dt + 0.5)
-        self.Kp = self.cfg["env"]["control"]["stiffness"]
-        self.Kd = self.cfg["env"]["control"]["damping"]
 
-        for key in self.rew_scales.keys():
-            self.rew_scales[key] *= self.dt
+        self.num_actions = self.cfg["env"]["numActions"]
 
-        if self.viewer != None:
-            p = self.cfg["env"]["viewer"]["pos"]
-            lookat = self.cfg["env"]["viewer"]["lookat"]
-            cam_pos = gymapi.Vec3(p[0], p[1], p[2])
-            cam_target = gymapi.Vec3(lookat[0], lookat[1], lookat[2])
-            self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
+        self._prepare_sim()
+        self._prepare_tensors()
 
-        # get gym state tensors
-        actor_root_state = self.gym.acquire_actor_root_state_tensor(self.sim)
-        dof_state_tensor = self.gym.acquire_dof_state_tensor(self.sim)
-        net_contact_forces = self.gym.acquire_net_contact_force_tensor(self.sim)
-        torques = self.gym.acquire_dof_force_tensor(self.sim)
+        self.actions = torch.zeros(
+            self.num_envs, self.num_actions, dtype=torch.float,
+            device=self.device, requires_grad=False)
 
-        self.gym.refresh_dof_state_tensor(self.sim)
-        self.gym.refresh_actor_root_state_tensor(self.sim)
-        self.gym.refresh_net_contact_force_tensor(self.sim)
-        self.gym.refresh_dof_force_tensor(self.sim)
-
-        # create some wrapper tensors for different slices
-        self.root_states = gymtorch.wrap_tensor(actor_root_state)
-        self.prev_root_states = self.root_states.clone()
-        self.dof_state = gymtorch.wrap_tensor(dof_state_tensor)
-        self.dof_pos = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 0]
-        self.dof_vel = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 1]
-        self.contact_forces = gymtorch.wrap_tensor(net_contact_forces).view(self.num_envs, -1, 3) # shape: num_envs, num_bodies, xyz axis
-        self.torques = gymtorch.wrap_tensor(torques).view(self.num_envs, self.num_dof)
-
-        self.commands = torch.zeros(self.num_envs, 3, dtype=torch.float, device=self.device) # 3 commands, linx, liny, angz
-        self.commands_x = self.commands.view(self.num_envs, 3)[..., 0]
-        self.commands_y = self.commands.view(self.num_envs, 3)[..., 1]
-        self.commands_yaw = self.commands.view(self.num_envs, 3)[..., 2]
-        self.default_dof_pos = torch.zeros_like(self.dof_pos, dtype=torch.float, device=self.device, requires_grad=False)
-
-        for i in range(self.cfg["env"]["numActions"]):
-            name = self.dof_names[i]
-            angle = self.named_default_joint_angles[name]
-            self.default_dof_pos[:, i] = angle
-
-        # additional data used later on
-        self.extras = {}
-        self.initial_root_states = self.root_states.clone()
-        self.initial_root_states[:] = to_torch(self.base_init_state, device=self.device, requires_grad=False)
-        self.gravity_vec = to_torch(get_axis_params(-1., self.up_axis_idx), device=self.device).repeat((self.num_envs, 1))
-        self.actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device = self.device, requires_grad=False)
-
-        # to randomly apply external forces to the robot during training
-        self.apply_external_forces = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False)
-        self.external_forces = torch.zeros(self.num_envs * self.num_bodies, 3, dtype=torch.float, device=self.device, requires_grad=False)
-        self.external_forces_body = self.external_forces[0::self.num_bodies, :]
-        self.external_force_pos = torch.zeros_like(self.external_forces)
-        self.external_force_pos_body = self.external_force_pos[0::self.num_bodies, :]
+        self.act_space = spaces.Box(
+            np.zeros(self.num_actions), np.ones(self.num_actions) * 1.)
 
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
 
 
     def create_sim(self):
-        self.up_axis_idx = 2 # Y=1, Z=2
-        self.sim = super().create_sim(self.device_id, self.graphics_device_id, self.physics_engine, self.sim_params)
+        self.up_axis_idx = 2 # Z up
+        self.sim = super().create_sim(
+            self.device_id, self.graphics_device_id, self.physics_engine,
+            self.sim_params)
         self._create_ground_plane()
-        self._create_envs(self.num_envs, self.cfg["env"]['envSpacing'], int(np.sqrt(self.num_envs)))
+        self._create_envs(
+            self.num_envs, self.cfg["env"]["envSpacing"],
+            int(np.sqrt(self.num_envs)))
 
-        # If randomizing apply once immediately on startup before the first simulation step
         if self.randomize:
             self.apply_randomizations(self.randomization_params)
+
 
     def _create_ground_plane(self):
         plane_params = gymapi.PlaneParams()
         plane_params.normal = gymapi.Vec3(0.0, 0.0, 1.0)
-        plane_params.static_friction = self.plane_dynamic_friction
+        plane_params.static_friction = self.cfg["env"]["plane"]["staticFriction"]
         self.gym.add_ground(self.sim, plane_params)
 
+
     def _create_envs(self, num_envs, spacing, num_per_row):
-        asset_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../assets')
+        asset_root = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "../../assets")
         asset_file = "urdf/ester/urdf/ester.urdf"
 
         asset_options = gymapi.AssetOptions()
@@ -159,7 +89,7 @@ class WalkFromEnergyMin(VecTask):
         asset_options.collapse_fixed_joints = False
         asset_options.replace_cylinder_with_capsule = True
         asset_options.flip_visual_attachments = False
-        asset_options.fix_base_link = self.cfg["env"]["urdfAsset"]["fixBaseLink"]
+        asset_options.fix_base_link = False
         asset_options.density = 0.001
         asset_options.angular_damping = 0.0
         asset_options.linear_damping = 0.0
@@ -167,71 +97,90 @@ class WalkFromEnergyMin(VecTask):
         asset_options.disable_gravity = False
         asset_options.thickness = 0.01
 
-        ester_asset = self.gym.load_asset(self.sim, asset_root, asset_file, asset_options)
+        ester_asset = self.gym.load_asset(
+            self.sim, asset_root, asset_file, asset_options)
         self.num_dof = self.gym.get_asset_dof_count(ester_asset)
         self.num_bodies = self.gym.get_asset_rigid_body_count(ester_asset)
-
         start_pose = gymapi.Transform()
-        start_pose.p = gymapi.Vec3(*self.base_init_state[:3])
+        start_pose.p = gymapi.Vec3(*self.initial_pos[:3])
 
         body_names = self.gym.get_asset_rigid_body_names(ester_asset)
         self.dof_names = self.gym.get_asset_dof_names(ester_asset)
-        contact_fail_names = [s for s in body_names if "lower" not in s and "foot" not in s] # all non-lower leg/foot rigid bodies
+        # We fail the episode if anything other than feet or shin touch the
+        # ground
+        contact_fail_names = [
+            s for s in body_names if "lower" not in s and "foot" not in s]
         foot_names = [s for s in body_names if "foot" in s]
-        self.contact_fail_indices = torch.zeros(len(contact_fail_names), dtype=torch.long, device=self.device, requires_grad=False)
-        self.foot_contact_sensor_indices = torch.zeros(len(foot_names), dtype=torch.long, device=self.device, requires_grad=False)
+        self.contact_fail_indices = torch.zeros(
+            len(contact_fail_names), dtype=torch.long, device=self.device,
+            requires_grad=False)
+        self.foot_contact_sensor_indices = torch.zeros(
+            len(foot_names), dtype=torch.long, device=self.device,
+            requires_grad=False)
         self.base_index = 0
 
         dof_props = self.gym.get_asset_dof_properties(ester_asset)
         for i in range(self.num_dof):
             dof_props['driveMode'][i] = gymapi.DOF_MODE_POS
-            dof_props['stiffness'][i] = self.cfg["env"]["control"]["stiffness"]
-            dof_props['damping'][i] = self.cfg["env"]["control"]["damping"]
+            dof_props["stiffness"][i] = self.cfg["env"]["control"]["stiffness"]
+            dof_props["damping"][i] = self.cfg["env"]["control"]["damping"]
 
         env_lower = gymapi.Vec3(-spacing, -spacing, 0.0)
         env_upper = gymapi.Vec3(spacing, spacing, spacing)
+
         self.ester_handles = []
         self.envs = []
 
         for i in range(self.num_envs):
-            # create env instance
-            env_ptr = self.gym.create_env(self.sim, env_lower, env_upper, num_per_row)
-            ester_handle = self.gym.create_actor(env_ptr, ester_asset, start_pose, "ester", i, 1, 0)
-            self.gym.set_actor_dof_properties(env_ptr, ester_handle, dof_props)
+            env_ptr = self.gym.create_env(
+                self.sim, env_lower, env_upper, num_per_row)
+            ester_handle = self.gym.create_actor(
+                env_ptr, ester_asset, start_pose, "ester", i, 1, 0)
+            self.gym.set_actor_dof_properties(
+                env_ptr, ester_handle, dof_props)
             self.gym.enable_actor_dof_force_sensors(env_ptr, ester_handle)
             self.envs.append(env_ptr)
             self.ester_handles.append(ester_handle)
 
         for i in range(len(contact_fail_names)):
-            self.contact_fail_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.ester_handles[0], contact_fail_names[i])
+            self.contact_fail_indices[i] = self.gym.find_actor_rigid_body_handle(
+                self.envs[0], self.ester_handles[0], contact_fail_names[i])
         for i in range(len(foot_names)):
-            self.foot_contact_sensor_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.ester_handles[0], foot_names[i])
+            self.foot_contact_sensor_indices[i] = self.gym.find_actor_rigid_body_handle(
+                self.envs[0], self.ester_handles[0], foot_names[i])
 
-        self.base_index = self.gym.find_actor_rigid_body_handle(self.envs[0], self.ester_handles[0], "base")
+        self.base_index = self.gym.find_actor_rigid_body_handle(
+            self.envs[0], self.ester_handles[0], "base")
 
 
     def pre_physics_step(self, actions):
+        self.plot_actions(actions)
         self.actions = actions.clone().to(self.device)
-        targets = self.action_scale * self.actions + self.default_dof_pos
-        self.gym.set_dof_position_target_tensor(self.sim, gymtorch.unwrap_tensor(targets))
+        # Actions range from 0 to 1 so split them between the joint limits
+        targets = self.action_scale * self.actions + self.dof_lower_limit
+        self.gym.set_dof_position_target_tensor(
+            self.sim, gymtorch.unwrap_tensor(targets))
 
-        # store prev root states now before update
+        # store previous root states before update
         self.prev_root_states = self.root_states.clone()
 
-        # apply random external force
-        rand = torch.rand(self.num_envs, device=self.device) < self.force_toggle_chance
-        # toggle forces if selected
-        self.apply_external_forces[rand] = ~self.apply_external_forces[rand]
-        force_on = torch.logical_and(rand, self.apply_external_forces)
-        force_off = torch.logical_and(rand, ~self.apply_external_forces)
+        if self.random_external_force:
+            rand = torch.rand(self.num_envs, device=self.device) < self.force_toggle_chance
+            self.apply_external_forces[rand] = ~self.apply_external_forces[rand]
+            force_on = torch.logical_and(rand, self.apply_external_forces)
+            force_off = torch.logical_and(rand, ~self.apply_external_forces)
 
-        self.external_forces_body[force_on] = (torch.rand(3, device=self.device) - 0.5) * 2 * self.force_strength
-        self.external_force_pos_body[force_on] = (torch.rand(3, device=self.device) - 0.5) * self.force_pos_range
-        self.external_forces_body[force_off] = 0
-        self.external_force_pos_body[force_off] = 0
+            self.external_forces_body[force_on] = (
+                torch.rand(3, device=self.device) - 0.5) * 2 * self.force_strength
+            self.external_force_pos_body[force_on] = (
+                torch.rand(3, device=self.device) - 0.5) * 2 * self.force_pos_range
+            self.external_forces_body[force_off] = 0
+            self.external_force_pos_body[force_off] = 0
 
-        # (actually) apply random external force
-        self.gym.apply_rigid_body_force_at_pos_tensors(self.sim, gymtorch.unwrap_tensor(self.external_forces), gymtorch.unwrap_tensor(self.external_force_pos), gymapi.LOCAL_SPACE)
+            self.gym.apply_rigid_body_force_at_pos_tensors(
+                self.sim, gymtorch.unwrap_tensor(self.external_forces),
+                gymtorch.unwrap_tensor(self.external_force_pos),
+                gymapi.LOCAL_SPACE)
 
 
     def post_physics_step(self):
@@ -260,26 +209,6 @@ class WalkFromEnergyMin(VecTask):
             self.base_index,
             self.max_episode_length,
         )
-
-        self.calculate_avg_torques(self.torques, self.reset_buf)
-
-    
-    def calculate_avg_torques(self, torques, reset):
-        try: self.torque_avgs
-        except AttributeError:
-            self.torque_avgs = torch.zeros_like(torques, device=self.device, requires_grad=False)
-            self.robot_iteration = torch.zeros(self.num_envs, dtype=torch.long, device=self.device, requires_grad=False)
-
-        self.torque_avgs += torques
-        self.robot_iteration += 1
-
-        if torch.any(reset == True):
-            summed_torques = self.torque_avgs[reset == True]
-            summed_torques = (summed_torques.t() / self.robot_iteration[reset == True]).t()
-            print(summed_torques)
-
-            self.torque_avgs[reset == True] = 0
-            self.robot_iteration[reset == True] = 0
 
 
     def compute_observations(self):
@@ -313,14 +242,24 @@ class WalkFromEnergyMin(VecTask):
 
 
     def reset_idx(self, env_ids):
-        # randomization happens at reset time
         if self.randomize:
-                self.apply_randomizations(self.randomization_params)
+            self.apply_randomizations(self.randomization_params)
 
-        positions_offset = torch_rand_float(0.5, 1.5, (len(env_ids), self.num_dof), device=self.device)
-        velocities = torch_rand_float(-0.1, 0.1, (len(env_ids), self.num_dof), device=self.device)
+        positions = self.default_dof_pos[env_ids]
+        velocities = torch.zeros(
+            len(env_ids), self.num_dof, dtype=torch.float,
+            device=self.device, requires_grad=False)
 
-        self.dof_pos[env_ids] = self.default_dof_pos[env_ids]# * positions_offset
+        if self.randomize:
+            # 99.99997 % of values between 0 and 1
+            positions = torch.randn(
+                len(env_ids), self.num_dof, dtype=torch.float,
+                device=self.device, requires_grad = false) * 0.1 + 0.5
+            positions = self.dof_lower_limit + positions * (self.dof_upper_limit - self.dof_lower_limit)
+            velocities = torch_rand_float(
+                -0.1, 0.1, (len(env_ids), self.num_dof), device=self.device)
+
+        self.dof_pos[env_ids] = positions
         self.dof_vel[env_ids] = velocities
 
         env_ids_int32 = env_ids.to(dtype=torch.int32)
@@ -347,7 +286,128 @@ class WalkFromEnergyMin(VecTask):
         self.reset_buf[env_ids] = 1
 
 
-## jit functions for actual calculation of reward and obs
+    def _load_config(self):
+        self.randomization_params = self.cfg["task"]["randomization_params"]
+        self.randomize = self.cfg["task"]["randomize"]
+
+        self.initial_pos = self.cfg["env"]["initialPos"]
+
+        self.random_external_force = self.cfg["env"]["randomForce"]["apply"]
+        self.force_toggle_chance = self.cfg["env"]["randomForce"]["toggle_chance"]
+        self.force_strength = self.cfg["env"]["randomForce"]["strength"]
+        self.force_pos_range = self.cfg["env"]["randomForce"]["posRange"]
+
+        self.named_default_joint_angles = self.cfg["env"]["defaultJointAngles"]
+        self.named_joint_upper_limits = self.cfg["env"]["dofUpperLimits"]
+        self.named_joint_lower_limits = self.cfg["env"]["dofLowerLimits"]
+
+        self.command_x_range = self.cfg["env"]["cmdVelRanges"]["lin_x"]
+        self.command_y_range = self.cfg["env"]["cmdVelRanges"]["lin_y"]
+        self.command_yaw_range = self.cfg["env"]["cmdVelRanges"]["ang_z"]
+
+        self.rew_scales = {}
+        self.rew_scales["lin_vel"] = self.cfg["env"]["learn"]["linVelRewardScale"]
+        self.rew_scales["ang_vel"] = self.cfg["env"]["learn"]["angVelRewardScale"]
+        self.rew_scales["energy"] = self.cfg["env"]["learn"]["energyRewardScale"]
+
+        self.lin_vel_scale = self.cfg["env"]["learn"]["linVelScale"]
+        self.lin_acc_scale = self.cfg["env"]["learn"]["linAccScale"]
+        self.ang_vel_scale = self.cfg["env"]["learn"]["angVelScale"]
+
+        self.dof_pos_scale = self.cfg["env"]["learn"]["dofPosScale"]
+        self.dof_vel_scale = self.cfg["env"]["learn"]["dofVelScale"]
+        self.torques_scale = self.cfg["env"]["learn"]["dofEffScale"]
+
+
+    def _prepare_sim(self):
+        self.dt = self.sim_params.dt
+        self.max_episode_length_s = self.cfg["env"]["learn"]["episodeLength_s"]
+        self.max_episode_length = int(self.max_episode_length_s / self.dt + 0.5)
+        self.Kp = self.cfg["env"]["control"]["stiffness"]
+        self.Kd = self.cfg["env"]["control"]["damping"]
+
+        for key in self.rew_scales.keys():
+            self.rew_scales[key] *= self.dt
+
+        if self.viewer != None:
+            p = self.cfg["env"]["viewer"]["pos"]
+            lookat = self.cfg["env"]["viewer"]["lookat"]
+            cam_pos = gymapi.Vec3(p[0], p[1], p[2])
+            cam_target = gymapi.Vec3(lookat[0], lookat[1], lookat[2])
+            self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
+
+
+    def _prepare_tensors(self):
+        actor_root_state = self.gym.acquire_actor_root_state_tensor(
+            self.sim)
+        dof_state_tensor = self.gym.acquire_dof_state_tensor(self.sim)
+        net_contact_forces = self.gym.acquire_net_contact_force_tensor(
+            self.sim)
+        torques = self.gym.acquire_dof_force_tensor(self.sim)
+
+        self.gym.refresh_dof_state_tensor(self.sim)
+        self.gym.refresh_actor_root_state_tensor(self.sim)
+        self.gym.refresh_net_contact_force_tensor(self.sim)
+        self.gym.refresh_dof_force_tensor(self.sim)
+
+        self.root_states = gymtorch.wrap_tensor(actor_root_state)
+        self.prev_root_states = self.root_states.clone()
+        self.dof_state = gymtorch.wrap_tensor(dof_state_tensor)
+        self.dof_pos = self.dof_state.view(
+            self.num_envs, self.num_dof, 2)[..., 0]
+        self.dof_vel = self.dof_state.view(
+            self.num_envs, self.num_dof, 2)[..., 1]
+        self.contact_forces = gymtorch.wrap_tensor(net_contact_forces).view(
+            self.num_envs, -1, 3) # shape: num_envs, num_bodies, xyz axis
+        self.torques = gymtorch.wrap_tensor(torques).view(
+            self.num_envs, self.num_dof)
+
+        self.commands = torch.zeros(
+            self.num_envs, 3, dtype=torch.float, device=self.device)
+        self.commands_x = self.commands.view(self.num_envs, 3)[..., 0]
+        self.commands_y = self.commands.view(self.num_envs, 3)[..., 1]
+        self.commands_yaw = self.commands.view(self.num_envs, 3)[..., 2]
+
+        self.default_dof_pos = torch.zeros_like(
+            self.dof_pos, dtype=torch.float, device=self.device,
+            requires_grad=False)
+        self.dof_upper_limit = torch.zeros_like(
+            self.dof_pos, dtype=torch.float, device=self.device,
+            requires_grad=False)
+        self.dof_lower_limit = torch.zeros_like(
+            self.dof_pos, dtype=torch.float, device=self.device,
+            requires_grad=False)
+
+        for i in range(self.num_actions):
+            name = self.dof_names[i]
+            angle = self.named_default_joint_angles[name]
+            self.default_dof_pos[:, i] = angle
+            upper = self.named_joint_upper_limits[name]
+            lower = self.named_joint_lower_limits[name]
+            self.dof_upper_limit[:, i] = upper
+            self.dof_lower_limit[:, i] = lower
+
+        self.action_scale = self.dof_upper_limit - self.dof_lower_limit
+
+        self.initial_root_states = self.root_states.clone()
+        self.initial_root_states[:, :3] = to_torch(
+            self.initial_pos, device=self.device, requires_grad=False)
+        self.initial_root_states[:, 7] = 1
+        self.gravity_vec = to_torch(
+            get_axis_params(-1., self.up_axis_idx), device=self.device).repeat((self.num_envs, 1))
+
+        self.apply_external_forces = torch.zeros(
+            self.num_envs, dtype=torch.bool, device=self.device,
+            requires_grad=False)
+        self.external_forces = torch.zeros(
+            self.num_envs * self.num_bodies, 3, dtype=torch.float,
+            device=self.device, requires_grad=False)
+        self.external_forces_body = self.external_forces[0::self.num_bodies, :]
+        self.external_force_pos = torch.zeros_like(self.external_forces)
+        self.external_force_pos_body = self.external_force_pos[0::self.num_bodies, :]
+
+        self.reset_idx(torch.arange(self.num_envs, device=self.device))
+
 
 @torch.jit.script
 def compute_ester_reward(
@@ -370,24 +430,26 @@ def compute_ester_reward(
     base_ang_vel = quat_rotate_inverse(base_quat, root_states[:, 10:13])
 
     # velocity tracking reward
-    lin_vel_error = torch.sum(torch.square(commands[:, :2] - base_lin_vel[:, :2]), dim=1)
+    lin_vel_error = torch.sum(
+        torch.square(commands[:, :2] - base_lin_vel[:, :2]), dim=1)
     ang_vel_error = torch.square(commands[:, 2] - base_ang_vel[:, 2])
     rew_lin_vel = torch.exp(-lin_vel_error/0.25) * rew_scales["lin_vel"]
     rew_ang_vel = torch.exp(-ang_vel_error/0.25) * rew_scales["ang_vel"]
 
     # energy penalty
-    rew_energy = torch.sum(torch.square(torques), dim=1) * rew_scales["energy"] # todo - 1/2 I w^2
+    rew_energy = torch.sum(torch.square(torques), dim=1) * rew_scales["energy"]
+
     total_reward = rew_lin_vel + rew_ang_vel + rew_energy
     total_reward = torch.clip(total_reward, 0., None)
 
-    # reset agents
-    # if base contact forces exist we fell over
+    # check for reset conditions
     reset = torch.norm(contact_forces[:, base_index, :], dim=1) > 1.
-    # if non-foot contact forces exist we fell over
-    reset = reset | torch.any(torch.norm(contact_forces[:, contact_fail_indices, :], dim=2) > 1., dim=1)
-    timeout = episode_lengths >= max_episode_length -1
+    reset = reset | torch.any(
+        torch.norm(contact_forces[:, contact_fail_indices, :], dim=2) > 1.,
+        dim=1)
+    timeout = episode_lengths >= max_episode_length
     reset = reset | timeout
-    
+
     return total_reward.detach(), reset
 
 
@@ -432,7 +494,7 @@ def compute_ester_observations(
                      commands_scaled,
                      dof_pos_scaled,
                      dof_vel*dof_vel_scale,
-    #                 torques*torques_scale,
+                     torques*torques_scale,
                      foot_contacts,
                      actions),
                      dim=1)
