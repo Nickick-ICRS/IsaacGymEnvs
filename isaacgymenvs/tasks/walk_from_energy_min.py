@@ -200,6 +200,7 @@ class WalkFromEnergyMin(VecTask):
             self.root_states,
             self.commands,
             self.torques,
+            self.dof_vel,
             self.contact_forces,
             self.contact_fail_indices,
             self.progress_buf,
@@ -415,6 +416,7 @@ def compute_ester_reward(
     root_states,
     commands,
     torques,
+    dof_vel,
     contact_forces,
     contact_fail_indices,
     episode_lengths,
@@ -424,7 +426,7 @@ def compute_ester_reward(
     base_index,
     max_episode_length
 ):
-    # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Dict[str, float], int, int) -> Tuple[Tensor, Tensor]
+    # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Dict[str, float], int, int) -> Tuple[Tensor, Tensor]
     base_quat = root_states[:, 3:7]
     base_lin_vel = quat_rotate_inverse(base_quat, root_states[:, 7:10])
     base_ang_vel = quat_rotate_inverse(base_quat, root_states[:, 10:13])
@@ -437,7 +439,7 @@ def compute_ester_reward(
     rew_ang_vel = torch.exp(-ang_vel_error/0.25) * rew_scales["ang_vel"]
 
     # energy penalty
-    rew_energy = torch.sum(torch.square(torques), dim=1) * rew_scales["energy"]
+    rew_energy = torch.sum(torch.square(torques * dof_vel), dim=1) * rew_scales["energy"]
 
     total_reward = rew_lin_vel + rew_ang_vel + rew_energy
     total_reward = torch.clip(total_reward, 0., None)
