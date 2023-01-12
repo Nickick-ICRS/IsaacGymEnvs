@@ -60,11 +60,11 @@ env:
 
     front_left_hip_fe_joint: -0.785 # [rad]
     front_left_upper_leg_joint: -1.57 # [rad]
-    front_left_lower_leg_joint: 0 # [rad]
+    front_left_lower_leg_joint: -2.356 # [rad]
 
     front_right_hip_fe_joint: -0.785 # [rad]
     front_right_upper_leg_joint: -1.57 # [rad]
-    front_right_lower_leg_joint: 0 # [rad]
+    front_right_lower_leg_joint: -2.356 # [rad]
 
     rear_left_hip_fe_joint: -0.785 # [rad]
     rear_left_upper_leg_joint: -1.57 # [rad]
@@ -82,11 +82,11 @@ env:
 
     front_left_hip_fe_joint: 0.087 # [rad]
     front_left_upper_leg_joint: 1.57 # [rad]
-    front_left_lower_leg_joint: 2.356 # [rad]
+    front_left_lower_leg_joint: 0 # [rad]
 
     front_right_hip_fe_joint: 0.087 # [rad]
     front_right_upper_leg_joint: 1.57 # [rad]
-    front_right_lower_leg_joint: 2.356 # [rad]
+    front_right_lower_leg_joint: 0 # [rad]
 
     rear_left_hip_fe_joint: 0.087 # [rad]
     rear_left_upper_leg_joint: 1.57 # [rad]
