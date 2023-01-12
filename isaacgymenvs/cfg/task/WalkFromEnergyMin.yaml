@@ -16,7 +16,7 @@ env:
 
   cmdVelRanges:
     lin_x: [-1., 1.] # [m/s]
-    lin_y: [-1., 1.] # [m/s]
+    lin_y: [-0.1, 0.1] # [m/s]
     ang_z: [-0.5, 0.5] # [rad/s]
 
   plane:
