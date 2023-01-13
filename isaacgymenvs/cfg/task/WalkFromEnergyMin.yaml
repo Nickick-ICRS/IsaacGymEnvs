@@ -9,8 +9,7 @@ env:
 
   initialPos: [0.0, 0.0, 0.3]
 
-  numObservations: 83
-  numActions: 16
+  numObs: 67 # Not including num actions
   clipObservations: 5.0
   clipActions: 1.0
 
@@ -51,6 +50,28 @@ env:
 
     # episode length in seconds
     episodeLength_s: 30
+
+  activeJoints:
+    front_spine_pitch_joint: False
+    rear_spine_pitch_joint: False
+    front_spine_yaw_joint: False
+    rear_spine_yaw_joint: False
+
+    front_left_hip_fe_joint: False
+    front_left_upper_leg_joint: True
+    front_left_lower_leg_joint: True
+
+    front_right_hip_fe_joint: False
+    front_right_upper_leg_joint: True
+    front_right_lower_leg_joint: True
+
+    rear_left_hip_fe_joint: False
+    rear_left_upper_leg_joint: True
+    rear_left_lower_leg_joint: True
+
+    rear_right_hip_fe_joint: False
+    rear_right_upper_leg_joint: True
+    rear_right_lower_leg_joint: True
 
   dofLowerLimits:
     front_spine_pitch_joint: -0.174 # [rad]

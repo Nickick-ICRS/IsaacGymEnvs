@@ -35,6 +35,8 @@ class WalkFromEnergyMin(VecTask):
 
         self._load_config()
 
+        self._read_active_joints()
+
         super().__init__(
             config=self.cfg, rl_device=rl_device, sim_device=sim_device,
             graphics_device_id=graphics_device_id, headless=headless,
@@ -111,20 +113,12 @@ class WalkFromEnergyMin(VecTask):
         contact_fail_names = [
             s for s in body_names if "lower" not in s and "foot" not in s]
         foot_names = [s for s in body_names if "foot" in s]
-        spine_names = [s for s in self.dof_names if "spine" in s]
-        hip_roll_names = [s for s in self.dof_names if "hip_aa" in s]
 
         self.contact_fail_indices = torch.zeros(
             len(contact_fail_names), dtype=torch.long, device=self.device,
             requires_grad=False)
         self.foot_contact_sensor_indices = torch.zeros(
             len(foot_names), dtype=torch.long, device=self.device,
-            requires_grad=False)
-        self.spine_joint_indices = torch.zeros(
-            len(spine_names), dtype=torch.long, device=self.device,
-            requires_grad=False)
-        self.hip_roll_joint_indices = torch.zeros(
-            len(hip_roll_names), dtype=torch.long, device=self.device,
             requires_grad=False)
         self.base_index = 0
 
@@ -157,12 +151,6 @@ class WalkFromEnergyMin(VecTask):
         for i in range(len(foot_names)):
             self.foot_contact_sensor_indices[i] = self.gym.find_actor_rigid_body_handle(
                 self.envs[0], self.ester_handles[0], foot_names[i])
-        for i in range(len(spine_names)):
-            self.spine_joint_indices[i] = self.gym.find_actor_dof_handle(
-                self.envs[0], self.ester_handles[0], spine_names[i])
-        for i in range(len(hip_roll_names)):
-            self.hip_roll_joint_indices[i] = self.gym.find_actor_dof_handle(
-                self.envs[0], self.ester_handles[0], hip_roll_names[i])
 
         self.base_index = self.gym.find_actor_rigid_body_handle(
             self.envs[0], self.ester_handles[0], "base")
@@ -172,9 +160,8 @@ class WalkFromEnergyMin(VecTask):
         self.plot_actions(actions)
         self.actions = actions.clone().to(self.device)
         # Actions range from 0 to 1 so split them between the joint limits
-        targets = self.action_scale * self.actions + self.dof_lower_limit
-        targets[:, self.spine_joint_indices] = self.default_dof_pos[:, self.spine_joint_indices]
-        targets[:, self.hip_roll_joint_indices] = self.default_dof_pos[:, self.hip_roll_joint_indices]
+        targets = self.default_dof_pos.clone()
+        targets[self.dof_active] = self.action_scale[self.dof_active] * self.actions.flatten()+ self.dof_lower_limit[self.dof_active]
 
         self.gym.set_dof_position_target_tensor(
             self.sim, gymtorch.unwrap_tensor(targets))
@@ -338,6 +325,18 @@ class WalkFromEnergyMin(VecTask):
         self.torques_scale = self.cfg["env"]["learn"]["dofEffScale"]
 
 
+    def _read_active_joints(self):
+        self.named_active_joints = self.cfg["env"]["activeJoints"]
+        print(self.named_active_joints)
+        num_actions = 0
+        self.num_joints = 0
+        for name in self.named_active_joints:
+            self.num_joints += 1
+            if self.named_active_joints[name]:
+                num_actions += 1
+        self.cfg["env"]["numActions"] = num_actions
+        self.cfg["env"]["numObservations"] = self.cfg["env"]["numObs"] + num_actions
+
     def _prepare_sim(self):
         self.dt = self.sim_params.dt
         self.max_episode_length_s = self.cfg["env"]["learn"]["episodeLength_s"]
@@ -396,15 +395,20 @@ class WalkFromEnergyMin(VecTask):
         self.dof_lower_limit = torch.zeros_like(
             self.dof_pos, dtype=torch.float, device=self.device,
             requires_grad=False)
+        self.dof_active = torch.zeros_like(
+            self.dof_pos, dtype=torch.bool, device=self.device,
+            requires_grad=False)
 
-        for i in range(self.num_actions):
+        for i in range(self.num_joints):
             name = self.dof_names[i]
             angle = self.named_default_joint_angles[name]
+            active = self.named_active_joints[name]
             self.default_dof_pos[:, i] = angle
             upper = self.named_joint_upper_limits[name]
             lower = self.named_joint_lower_limits[name]
             self.dof_upper_limit[:, i] = upper
             self.dof_lower_limit[:, i] = lower
+            self.dof_active[:, i] = active
 
         self.action_scale = self.dof_upper_limit - self.dof_lower_limit
 
