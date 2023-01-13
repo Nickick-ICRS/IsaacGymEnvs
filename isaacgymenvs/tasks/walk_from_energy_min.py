@@ -169,7 +169,6 @@ class WalkFromEnergyMin(VecTask):
         # store previous states before update
         self.prev_root_states = self.root_states.clone()
         self.prev_dof_vels = self.dof_vel.clone()
-        self.prev_dof_acc = self.dof_acc.clone()
 
         if self.random_external_force:
             rand = torch.rand(self.num_envs, device=self.device) < self.force_toggle_chance
@@ -208,7 +207,7 @@ class WalkFromEnergyMin(VecTask):
             self.commands,
             self.torques,
             self.dof_vel,
-            self.prev_dof_vel,
+            (self.dof_vel - self.prev_dof_vel) / self.dt,
             self.contact_forces,
             self.contact_fail_indices,
             self.progress_buf,
@@ -444,7 +443,7 @@ def compute_ester_reward(
     commands,
     torques,
     dof_vel,
-    prev_dof_vel,
+    dof_acc,
     contact_forces,
     contact_fail_indices,
     episode_lengths,
@@ -470,7 +469,7 @@ def compute_ester_reward(
     rew_energy = torch.sum(torch.square(torques * dof_vel), dim=1) * rew_scales["energy"]
 
     # acc penalty
-    rew_acc = torch.sum(torch.square((dof_vel - prev_dof_vel) / dt), dim=1) * rew_scales["acc"]
+    rew_acc = torch.sum(torch.square(dof_acc), dim=1) * rew_scales["acc"]
 
     total_reward = rew_lin_vel + rew_ang_vel + rew_energy + rew_acc
     total_reward = torch.clip(total_reward, 0., None)
