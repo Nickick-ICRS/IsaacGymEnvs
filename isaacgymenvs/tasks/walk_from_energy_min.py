@@ -166,8 +166,10 @@ class WalkFromEnergyMin(VecTask):
         self.gym.set_dof_position_target_tensor(
             self.sim, gymtorch.unwrap_tensor(targets))
 
-        # store previous root states before update
+        # store previous states before update
         self.prev_root_states = self.root_states.clone()
+        self.prev_dof_vels = self.dof_vel.clone()
+        self.prev_dof_acc = self.dof_acc.clone()
 
         if self.random_external_force:
             rand = torch.rand(self.num_envs, device=self.device) < self.force_toggle_chance
@@ -206,6 +208,7 @@ class WalkFromEnergyMin(VecTask):
             self.commands,
             self.torques,
             self.dof_vel,
+            self.prev_dof_vel,
             self.contact_forces,
             self.contact_fail_indices,
             self.progress_buf,
@@ -315,6 +318,7 @@ class WalkFromEnergyMin(VecTask):
         self.rew_scales["lin_vel"] = self.cfg["env"]["learn"]["linVelRewardScale"]
         self.rew_scales["ang_vel"] = self.cfg["env"]["learn"]["angVelRewardScale"]
         self.rew_scales["energy"] = self.cfg["env"]["learn"]["energyRewardScale"]
+        self.rew_scales["acc"] = self.cfg["env"]["learn"]["accRewardScale"]
 
         self.lin_vel_scale = self.cfg["env"]["learn"]["linVelScale"]
         self.lin_acc_scale = self.cfg["env"]["learn"]["linAccScale"]
@@ -375,6 +379,7 @@ class WalkFromEnergyMin(VecTask):
             self.num_envs, self.num_dof, 2)[..., 0]
         self.dof_vel = self.dof_state.view(
             self.num_envs, self.num_dof, 2)[..., 1]
+        self.prev_dof_vel = torch.zeros_like(self.dof_vel)
         self.contact_forces = gymtorch.wrap_tensor(net_contact_forces).view(
             self.num_envs, -1, 3) # shape: num_envs, num_bodies, xyz axis
         self.torques = gymtorch.wrap_tensor(torques).view(
@@ -436,10 +441,10 @@ class WalkFromEnergyMin(VecTask):
 def compute_ester_reward(
     # tensors
     root_states,
-#    foot_states,
     commands,
     torques,
     dof_vel,
+    prev_dof_vel,
     contact_forces,
     contact_fail_indices,
     episode_lengths,
@@ -449,7 +454,7 @@ def compute_ester_reward(
     base_index,
     max_episode_length
 ):
-    # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Dict[str, float], int, int) -> Tuple[Tensor, Tensor]
+    # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Dict[str, float], int, int) -> Tuple[Tensor, Tensor]
     base_quat = root_states[:, 3:7]
     base_lin_vel = quat_rotate_inverse(base_quat, root_states[:, 7:10])
     base_ang_vel = quat_rotate_inverse(base_quat, root_states[:, 10:13])
@@ -464,13 +469,10 @@ def compute_ester_reward(
     # energy penalty
     rew_energy = torch.sum(torch.square(torques * dof_vel), dim=1) * rew_scales["energy"]
 
-    # big penalty for raising foot above body
-#    num_feet = foot_states.shape[1]
-#    feet_above_base = torch.any(
-#        root_states[:, 2].repeat(num_feet).transpose(0, 1),  < foot_states[:, :, 2], dim=1)
-#    rew_raised_feet = feet_above_base * rew_scales["feet_raised"]
+    # acc penalty
+    rew_acc = torch.sum(torch.square((dof_vel - prev_dof_vel) / dt), dim=1) * rew_scales["acc"]
 
-    total_reward = rew_lin_vel + rew_ang_vel + rew_energy# + rew_raised_feet
+    total_reward = rew_lin_vel + rew_ang_vel + rew_energy + rew_acc
     total_reward = torch.clip(total_reward, 0., None)
 
     # check for reset conditions
