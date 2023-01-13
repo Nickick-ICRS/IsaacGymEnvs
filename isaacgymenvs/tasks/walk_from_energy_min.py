@@ -173,8 +173,8 @@ class WalkFromEnergyMin(VecTask):
         self.actions = actions.clone().to(self.device)
         # Actions range from 0 to 1 so split them between the joint limits
         targets = self.action_scale * self.actions + self.dof_lower_limit
-        targets[self.spine_joint_indices] = self.default_dof_pos[self.spine_joint_indices]
-        targets[self.hip_roll_joint_indices] = self.default_dof_pos[self.hip_roll_joint_indices]
+        targets[:, self.spine_joint_indices] = self.default_dof_pos[:, self.spine_joint_indices]
+        targets[:, self.hip_roll_joint_indices] = self.default_dof_pos[:, self.hip_roll_joint_indices]
 
         self.gym.set_dof_position_target_tensor(
             self.sim, gymtorch.unwrap_tensor(targets))
