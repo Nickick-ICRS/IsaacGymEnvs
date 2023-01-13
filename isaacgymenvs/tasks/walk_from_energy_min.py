@@ -111,11 +111,20 @@ class WalkFromEnergyMin(VecTask):
         contact_fail_names = [
             s for s in body_names if "lower" not in s and "foot" not in s]
         foot_names = [s for s in body_names if "foot" in s]
+        spine_names = [s for s in self.dof_names if "spine" in s]
+        hip_roll_names = [s for s in self.dof_names if "hip_aa" in s]
+
         self.contact_fail_indices = torch.zeros(
             len(contact_fail_names), dtype=torch.long, device=self.device,
             requires_grad=False)
         self.foot_contact_sensor_indices = torch.zeros(
             len(foot_names), dtype=torch.long, device=self.device,
+            requires_grad=False)
+        self.spine_joint_indices = torch.zeros(
+            len(spine_names), dtype=torch.long, device=self.device,
+            requires_grad=False)
+        self.hip_roll_joint_indices = torch.zeros(
+            len(hip_roll_names), dtype=torch.long, device=self.device,
             requires_grad=False)
         self.base_index = 0
 
@@ -148,6 +157,12 @@ class WalkFromEnergyMin(VecTask):
         for i in range(len(foot_names)):
             self.foot_contact_sensor_indices[i] = self.gym.find_actor_rigid_body_handle(
                 self.envs[0], self.ester_handles[0], foot_names[i])
+        for i in range(len(spine_names)):
+            self.spine_joint_indices[i] = self.gym.find_actor_dof_handle(
+                self.envs[0], self.ester_handles[0], spine_names[i])
+        for i in range(len(hip_roll_names)):
+            self.hip_roll_joint_indices[i] = self.gym.find_actor_dof_handle(
+                self.envs[0], self.ester_handles[0], hip_roll_names[i])
 
         self.base_index = self.gym.find_actor_rigid_body_handle(
             self.envs[0], self.ester_handles[0], "base")
@@ -158,6 +173,9 @@ class WalkFromEnergyMin(VecTask):
         self.actions = actions.clone().to(self.device)
         # Actions range from 0 to 1 so split them between the joint limits
         targets = self.action_scale * self.actions + self.dof_lower_limit
+        targets[self.spine_joint_indices] = self.default_dof_pos[self.spine_joint_indices]
+        targets[self.hip_roll_joint_indices] = self.default_dof_pos[self.hip_roll_joint_indices]
+
         self.gym.set_dof_position_target_tensor(
             self.sim, gymtorch.unwrap_tensor(targets))
 
@@ -414,6 +432,7 @@ class WalkFromEnergyMin(VecTask):
 def compute_ester_reward(
     # tensors
     root_states,
+#    foot_states,
     commands,
     torques,
     dof_vel,
@@ -441,7 +460,13 @@ def compute_ester_reward(
     # energy penalty
     rew_energy = torch.sum(torch.square(torques * dof_vel), dim=1) * rew_scales["energy"]
 
-    total_reward = rew_lin_vel + rew_ang_vel + rew_energy
+    # big penalty for raising foot above body
+#    num_feet = foot_states.shape[1]
+#    feet_above_base = torch.any(
+#        root_states[:, 2].repeat(num_feet).transpose(0, 1),  < foot_states[:, :, 2], dim=1)
+#    rew_raised_feet = feet_above_base * rew_scales["feet_raised"]
+
+    total_reward = rew_lin_vel + rew_ang_vel + rew_energy# + rew_raised_feet
     total_reward = torch.clip(total_reward, 0., None)
 
     # check for reset conditions
