@@ -204,6 +204,7 @@ class WalkFromEnergyMin(VecTask):
         self.rew_buf[:], self.reset_buf[:] = compute_ester_reward(
             # tensors
             self.root_states,
+            self.foot_states,
             self.commands,
             self.torques,
             self.dof_vel,
@@ -221,6 +222,7 @@ class WalkFromEnergyMin(VecTask):
 
     def compute_observations(self):
         self.gym.refresh_dof_state_tensor(self.sim)
+        self.gym.refresh_rigid_body_state_tensor(self.sim)
         self.gym.refresh_actor_root_state_tensor(self.sim)
         self.gym.refresh_net_contact_force_tensor(self.sim)
         self.gym.refresh_dof_force_tensor(self.sim)
@@ -318,6 +320,7 @@ class WalkFromEnergyMin(VecTask):
         self.rew_scales["ang_vel"] = self.cfg["env"]["learn"]["angVelRewardScale"]
         self.rew_scales["energy"] = self.cfg["env"]["learn"]["energyRewardScale"]
         self.rew_scales["acc"] = self.cfg["env"]["learn"]["accRewardScale"]
+        self.rew_scales["feet_raised"] = self.cfg["env"]["learn"]["feetRaisedRewardScale"]
 
         self.lin_vel_scale = self.cfg["env"]["learn"]["linVelScale"]
         self.lin_acc_scale = self.cfg["env"]["learn"]["linAccScale"]
@@ -330,7 +333,6 @@ class WalkFromEnergyMin(VecTask):
 
     def _read_active_joints(self):
         self.named_active_joints = self.cfg["env"]["activeJoints"]
-        print(self.named_active_joints)
         num_actions = 0
         self.num_joints = 0
         for name in self.named_active_joints:
@@ -362,12 +364,14 @@ class WalkFromEnergyMin(VecTask):
         actor_root_state = self.gym.acquire_actor_root_state_tensor(
             self.sim)
         dof_state_tensor = self.gym.acquire_dof_state_tensor(self.sim)
+        rbd_tensor = self.gym.acquire_rigid_body_state_tensor(self.sim)
         net_contact_forces = self.gym.acquire_net_contact_force_tensor(
             self.sim)
         torques = self.gym.acquire_dof_force_tensor(self.sim)
 
         self.gym.refresh_dof_state_tensor(self.sim)
         self.gym.refresh_actor_root_state_tensor(self.sim)
+        self.gym.refresh_rigid_body_state_tensor(self.sim)
         self.gym.refresh_net_contact_force_tensor(self.sim)
         self.gym.refresh_dof_force_tensor(self.sim)
 
@@ -383,6 +387,9 @@ class WalkFromEnergyMin(VecTask):
             self.num_envs, -1, 3) # shape: num_envs, num_bodies, xyz axis
         self.torques = gymtorch.wrap_tensor(torques).view(
             self.num_envs, self.num_dof)
+        self.rigid_body_states = gymtorch.wrap_tensor(rbd_tensor).view(
+            self.num_envs, -1, 13) # shape: num_envs, num_bodies, 13
+        self.foot_states = self.rigid_body_states[:, self.foot_contact_sensor_indices, :]
 
         self.commands = torch.zeros(
             self.num_envs, 3, dtype=torch.float, device=self.device)
@@ -440,6 +447,7 @@ class WalkFromEnergyMin(VecTask):
 def compute_ester_reward(
     # tensors
     root_states,
+    foot_states,
     commands,
     torques,
     dof_vel,
@@ -453,7 +461,7 @@ def compute_ester_reward(
     base_index,
     max_episode_length
 ):
-    # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Dict[str, float], int, int) -> Tuple[Tensor, Tensor]
+    # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Dict[str, float], int, int) -> Tuple[Tensor, Tensor]
     base_quat = root_states[:, 3:7]
     base_lin_vel = quat_rotate_inverse(base_quat, root_states[:, 7:10])
     base_ang_vel = quat_rotate_inverse(base_quat, root_states[:, 10:13])
@@ -471,7 +479,10 @@ def compute_ester_reward(
     # acc penalty
     rew_acc = torch.sum(torch.square(dof_acc), dim=1) * rew_scales["acc"]
 
-    total_reward = rew_lin_vel + rew_ang_vel + rew_energy + rew_acc
+    # feet lifted off ground penalty - penalise based on z position
+    rew_feet = torch.sum(foot_states[:, :, 2], dim=1) * rew_scales["feet_raised"]
+
+    total_reward = rew_lin_vel + rew_ang_vel + rew_energy + rew_acc + rew_feet
     total_reward = torch.clip(total_reward, 0., None)
 
     # check for reset conditions
