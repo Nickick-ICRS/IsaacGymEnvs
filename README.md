@@ -27,7 +27,7 @@ pip install -e .
 
 ### Creating an environment
 
-We offer an easy-to-use API for creating preset vectorized environments. For more info on what an vectorized environment is and its usage, please refer to the Gym's [documentation](https://www.gymlibrary.ml/content/vector_api/).
+We offer an easy-to-use API for creating preset vectorized environments. For more info on what a vectorized environment is and its usage, please refer to the Gym library [documentation](https://www.gymlibrary.dev/content/vectorising/#vectorized-environments).
 
 ```python
 import isaacgym
@@ -120,7 +120,7 @@ Key arguments to the `train.py` script are:
 * `seed=SEED` - sets a seed value for randomizations, and overrides the default seed set up in the task config
 * `sim_device=SIM_DEVICE_TYPE` - Device used for physics simulation. Set to `cuda:0` (default) to use GPU and to `cpu` for CPU. Follows PyTorch-like device syntax.
 * `rl_device=RL_DEVICE` - Which device / ID to use for the RL algorithm. Defaults to `cuda:0`, and also follows PyTorch-like device syntax.
-* `graphics_device_id=GRAHPICS_DEVICE_ID` - Which Vulkan graphics device ID to use for rendering. Defaults to 0. **Note** - this may be different from CUDA device ID, and does **not** follow PyTorch-like device syntax.
+* `graphics_device_id=GRAPHICS_DEVICE_ID` - Which Vulkan graphics device ID to use for rendering. Defaults to 0. **Note** - this may be different from CUDA device ID, and does **not** follow PyTorch-like device syntax.
 * `pipeline=PIPELINE` - Which API pipeline to use. Defaults to `gpu`, can also set to `cpu`. When using the `gpu` pipeline, all data stays on the GPU and everything runs as fast as possible. When using the `cpu` pipeline, simulation can run on either CPU or GPU, depending on the `sim_device` setting, but a copy of the data is always made on the CPU at every step.
 * `test=TEST`- If set to `True`, only runs inference on the policy and does not do any training.
 * `checkpoint=CHECKPOINT_PATH` - Set to path to the checkpoint to load for training or testing.

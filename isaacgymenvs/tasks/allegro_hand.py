@@ -597,7 +597,7 @@ class AllegroHand(VecTask):
         # reset shadow hand
         delta_max = self.shadow_hand_dof_upper_limits - self.shadow_hand_dof_default_pos
         delta_min = self.shadow_hand_dof_lower_limits - self.shadow_hand_dof_default_pos
-        rand_delta = delta_min + (delta_max - delta_min) * rand_floats[:, 5:5+self.num_shadow_hand_dofs]
+        rand_delta = delta_min + (delta_max - delta_min) * 0.5 * (rand_floats[:, 5:5+self.num_shadow_hand_dofs] + 1)
 
         pos = self.shadow_hand_default_dof_pos + self.reset_dof_pos_noise * rand_delta
         self.shadow_hand_dof_pos[env_ids, :] = pos
@@ -662,6 +662,7 @@ class AllegroHand(VecTask):
 
     def post_physics_step(self):
         self.progress_buf += 1
+        self.randomize_buf += 1
 
         self.compute_observations()
         self.compute_reward(self.actions)
