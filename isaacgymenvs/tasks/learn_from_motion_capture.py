@@ -224,24 +224,23 @@ class LearnFromMotionCapture(VecTask):
         if self.randomize:
                 self.apply_randomizations(self.randomization_params)
 
-        positions = self.default_dof_pos[env_ids]
+        self.frame_rate_multipliers[env_ids] = torch.rand((len(env_ids)), device=self.device, dtype=torch.float) * 1.5 + 0.5 # 0.5 < X < 2
+        self.get_next_frames(reset=env_ids)
+
+        positions = self.current_frames[env_ids]
         velocities = torch.zeros(
             (len(env_ids), self.num_dof), dtype=torch.float,
             device=self.device, requires_grad=False)
 
         if self.randomize:
-            positions = torch.randn(
+            positions *= torch.rand(
                 len(env_ids), self.num_dof, dtype=torch.float,
-                device=self.device, requires_grad=False) * 0.1 + 0.5
-            positions = self.dof_lower_limit + positions * (self.dof_upper_limit - self.dof_lower_limit)
+                device=self.device, requires_grad=False) * 0.1
             velocities = torch_rand_float(
                 -0.1, 0.1, (len(env_ids), self.num_dof), device=self.device)
         
         self.dof_pos[env_ids] = positions
         self.dof_vel[env_ids] = velocities
-
-        self.frame_rate_multipliers[env_ids] = torch.rand((len(env_ids)), device=self.device, dtype=torch.float) * 1.5 + 0.5 # 0.5 < X < 2
-        self.get_next_frames(reset=env_ids)
 
         env_ids_int32 = env_ids.to(dtype=torch.int32)
 
@@ -290,7 +289,7 @@ class LearnFromMotionCapture(VecTask):
         self.frame_rate_multipliers = torch.zeros(
             (self.num_envs), device=self.device, dtype=torch.float)
         self.joint_data_replayer = JointDataReplayer(
-            filename=self.joint_data_path, random_start=False,
+            filename=self.joint_data_path, random_start=True,
             loop=(not self.reset_on_loop), num_parallels=self.num_envs,
             device=self.device)
 
