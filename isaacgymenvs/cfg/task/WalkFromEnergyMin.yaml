@@ -54,24 +54,24 @@ env:
     episodeLength_s: 30
 
   activeJoints:
-    front_spine_pitch_joint: False
-    rear_spine_pitch_joint: False
-    front_spine_yaw_joint: False
-    rear_spine_yaw_joint: False
+    front_spine_pitch_joint: True
+    rear_spine_pitch_joint: True
+    front_spine_yaw_joint: True
+    rear_spine_yaw_joint: True
 
-    front_left_hip_fe_joint: False
+    front_left_hip_fe_joint: True
     front_left_upper_leg_joint: True
     front_left_lower_leg_joint: True
 
-    front_right_hip_fe_joint: False
+    front_right_hip_fe_joint: True
     front_right_upper_leg_joint: True
     front_right_lower_leg_joint: True
 
-    rear_left_hip_fe_joint: False
+    rear_left_hip_fe_joint: True
     rear_left_upper_leg_joint: True
     rear_left_lower_leg_joint: True
 
-    rear_right_hip_fe_joint: False
+    rear_right_hip_fe_joint: True
     rear_right_upper_leg_joint: True
     rear_right_lower_leg_joint: True
 

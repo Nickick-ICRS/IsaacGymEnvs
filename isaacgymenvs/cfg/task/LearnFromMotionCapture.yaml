@@ -7,49 +7,119 @@ env:
   numEnvs: ${resolve_default:4096,${...num_envs}}
   envSpacing: 4.  # [m]
 
+  initialPos: [0.0, 0.0, 0.3]
+
   clipObservations: 5.0
   clipActions: 1.0
 
-  mocap:
-    # relative to IsaacGymEnvs/isaacgymenvs/data
-    path: 'dog_walk00_joint_pos.txt'
-    trimStart: 90 # 0 to trim nothing or X to trim < X
-    trimEnd: -1 # -1 to trim nothing -(n+1) to trim last n or X to trim > X
-    resetOnLoop: True
-    scale: 0.68
-    timePerFrame: 0.0166666666666666666666667
+  numObs: 77
 
+  mocap:
+    path: '/home/nick/catkin_ws/src/ESTER/ester_walking_gait/generated/all_dofs/dog_trot_joint_pos.txt'
+    resetOnLoop: False
+    fps: 30
 
   force:
     toggleChance: -0.01 # [0-1]
     maxStrength: 20 # [N]
     posRange: 0.1 # [m]
 
-
   plane:
     staticFriction: 1.0  # [-]
-    dynamicFriction: 1.0  # [-]
-    restitution: 0.        # [-]
-
-  baseInitState:
-    pos: [0.0, 0.0, 0.4] # x,y,z [m]
-    rot: [0.0, 0.0, 0.0, 1.0] # x,y,z,w [quat]
-    vLin: [0.0, 0.0, 0.0]  # x,y,z [m/s]
-    vAng: [0.0, 0.0, 0.0]  # x,y,z [rad/s]
-
-  cmdVelRanges:
-    lin_x: [-1., 1.] # min max [m/s]
-    lin_y: [-0.5, 0.5] # min max [m/s]
-    ang_z: [-0.5, 0.5] # min max [rad/s]
 
   control:
     # PD Drive parameters:
     stiffness: 85.0  # [N*m/rad]
     damping: 2.0     # [N*m*s/rad]
-    actionScale: 0.5
-    controlFrequencyInv: 1 # 60 Hz
 
-  defaultJointAngles:  # = target angles when action = 0.0
+  urdfAsset:
+    collapseFixedJoints: True
+    fixBaseLink: False
+    defaultDofDriveMode: 4 # see GymDofDriveModeFlags (0 is none, 1 is pos tgt, 2 is vel tgt, 4 effort)
+
+  learn:
+    # rewards
+    jointPosRewardScale: 0.5
+    energyRewardScale: -0.000025 
+
+    # normalization
+    linVelScale: 2.0
+    linAccScale: 10.0
+    angVelScale: 0.25
+    dofPosScale: 0.5
+    dofVelScale: 0.05
+    dofEffScale: 0.0025
+
+    # episode length in seconds
+    episodeLength_s: 30
+
+  activeJoints:
+    front_spine_pitch_joint: True
+    rear_spine_pitch_joint: True
+    front_spine_yaw_joint: True
+    rear_spine_yaw_joint: True
+
+    front_left_hip_fe_joint: True
+    front_left_upper_leg_joint: True
+    front_left_lower_leg_joint: True
+
+    front_right_hip_fe_joint: True
+    front_right_upper_leg_joint: True
+    front_right_lower_leg_joint: True
+
+    rear_left_hip_fe_joint: True
+    rear_left_upper_leg_joint: True
+    rear_left_lower_leg_joint: True
+
+    rear_right_hip_fe_joint: True
+    rear_right_upper_leg_joint: True
+    rear_right_lower_leg_joint: True
+
+  dofLowerLimits:
+    front_spine_pitch_joint: -0.174 # [rad]
+    rear_spine_pitch_joint: -0.174 # [rad]
+    front_spine_yaw_joint: -0.261 # [rad]
+    rear_spine_yaw_joint: -0.261 # [rad]
+
+    front_left_hip_fe_joint: -0.785 # [rad]
+    front_left_upper_leg_joint: -0.785 # [rad]
+    front_left_lower_leg_joint: -2.356 # [rad]
+
+    front_right_hip_fe_joint: -0.785 # [rad]
+    front_right_upper_leg_joint: -0.785 # [rad]
+    front_right_lower_leg_joint: -2.356 # [rad]
+
+    rear_left_hip_fe_joint: -0.785 # [rad]
+    rear_left_upper_leg_joint: -0.785 # [rad]
+    rear_left_lower_leg_joint: 0 # [rad]
+
+    rear_right_hip_fe_joint: -0.785 # [rad]
+    rear_right_upper_leg_joint: -0.785 # [rad]
+    rear_right_lower_leg_joint: 0 # [rad]
+
+  dofUpperLimits:
+    front_spine_pitch_joint: 0.174 # [rad]
+    rear_spine_pitch_joint: 0.174 # [rad]
+    front_spine_yaw_joint: 0.261 # [rad]
+    rear_spine_yaw_joint: 0.261 # [rad]
+
+    front_left_hip_fe_joint: 0.087 # [rad]
+    front_left_upper_leg_joint: 1.047 # [rad]
+    front_left_lower_leg_joint: 0 # [rad]
+
+    front_right_hip_fe_joint: 0.087 # [rad]
+    front_right_upper_leg_joint: 1.047 # [rad]
+    front_right_lower_leg_joint: 0 # [rad]
+
+    rear_left_hip_fe_joint: 0.087 # [rad]
+    rear_left_upper_leg_joint: 0.785 # [rad]
+    rear_left_lower_leg_joint: 2.356 # [rad]
+
+    rear_right_hip_fe_joint: 0.087 # [rad]
+    rear_right_upper_leg_joint: 0.785 # [rad]
+    rear_right_lower_leg_joint: 2.356 # [rad]
+
+  defaultJointAngles:
     front_spine_pitch_joint: 0 # [rad]
     rear_spine_pitch_joint: 0 # [rad]
     front_spine_yaw_joint: 0 # [rad]
@@ -70,29 +140,6 @@ env:
     rear_right_hip_fe_joint: 0 # [rad]
     rear_right_upper_leg_joint: 0 # [rad]
     rear_right_lower_leg_joint: 0 # [rad]
-
-  urdfAsset:
-    collapseFixedJoints: True
-    fixBaseLink: False
-    defaultDofDriveMode: 4 # see GymDofDriveModeFlags (0 is none, 1 is pos tgt, 2 is vel tgt, 4 effort)
-
-  learn:
-    # rewards
-    chainErrorRewardScale: 1.0
-    footErrorRewardScale: 0.5
-    energyRewardScale: -0.000025 
-
-    # normalization
-    linVelScale: 2.0
-    linAccScale: 10.0
-    angVelScale: 0.25
-    dofPosScale: 1.0
-    dofVelScale: 0.05
-    dofEffScale: 0.0025
-    actionScale: 1.0
-
-    # episode length in seconds
-    episodeLength_s: 50
 
   # viewer cam:
   viewer:

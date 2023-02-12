@@ -264,7 +264,7 @@ class WalkFromEnergyMin(VecTask):
             # 99.99997 % of values between 0 and 1
             positions = torch.randn(
                 len(env_ids), self.num_dof, dtype=torch.float,
-                device=self.device, requires_grad = false) * 0.1 + 0.5
+                device=self.device, requires_grad=False) * 0.1 + 0.5
             positions = self.dof_lower_limit + positions * (self.dof_upper_limit - self.dof_lower_limit)
             velocities = torch_rand_float(
                 -0.1, 0.1, (len(env_ids), self.num_dof), device=self.device)
@@ -341,6 +341,7 @@ class WalkFromEnergyMin(VecTask):
                 num_actions += 1
         self.cfg["env"]["numActions"] = num_actions
         self.cfg["env"]["numObservations"] = self.cfg["env"]["numObs"] + num_actions
+
 
     def _prepare_sim(self):
         self.dt = self.sim_params.dt

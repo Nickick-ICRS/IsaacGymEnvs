@@ -2,18 +2,18 @@ import numpy as np
 import os
 import torch
 
+from gym import spaces
+
 from isaacgym import gymtorch
 from isaacgym import gymapi
 from isaacgym.torch_utils import *
 
 from isaacgymenvs.tasks.base.vec_task import VecTask
 
+from ester_walking_gait.joint_data_replayer_torch import JointDataReplayer
+
 from typing import Tuple, Dict
 
-MOCAP_SPINE_CENTER = 2
-ESTER_SPINE_CENTER = 0
-MOCAP_FORWARDS = 3
-ESTER_FORWARDS = 4
 
 class LearnFromMotionCapture(VecTask):
     
@@ -21,131 +21,28 @@ class LearnFromMotionCapture(VecTask):
         
         self.cfg = cfg
 
-        # normalization parameters
-        self.lin_vel_scale = self.cfg["env"]["learn"]["linVelScale"]
-        self.lin_acc_scale = self.cfg["env"]["learn"]["linAccScale"]
-        self.ang_vel_scale = self.cfg["env"]["learn"]["angVelScale"]
+        self._load_config()
 
-        self.dof_pos_scale = self.cfg["env"]["learn"]["dofPosScale"]
-        self.dof_vel_scale = self.cfg["env"]["learn"]["dofVelScale"]
-        self.torques_scale = self.cfg["env"]["learn"]["dofEffScale"]
-        self.action_scale = self.cfg["env"]["learn"]["actionScale"]
+        self._read_active_joints()
 
-        # reward scales
-        self.rew_scales = {}
-        self.rew_scales["chainError"] = self.cfg["env"]["learn"]["chainErrorRewardScale"]
-        self.rew_scales["footError"] = self.cfg["env"]["learn"]["footErrorRewardScale"]
-#        self.rew_scales["pos"] = self.cfg["env"]["learn"]["posRewardScale"]
-        self.rew_scales["energy"] = self.cfg["env"]["learn"]["energyRewardScale"]
+        super().__init__(
+            config=self.cfg, rl_device=rl_device, sim_device=sim_device,
+            graphics_device_id=graphics_device_id, headless=headless,
+            virtual_screen_capture=virtual_screen_capture,
+            force_render=force_render)
 
-        # randomization
-        self.randomization_params = self.cfg["task"]["randomization_params"]
-        self.randomize = self.cfg["task"]["randomize"]
+        self.num_actions = self.cfg["env"]["numActions"]
 
-        # command ranges
-        self.command_x_range = self.cfg["env"]["cmdVelRanges"]["lin_x"]
-        self.command_y_range = self.cfg["env"]["cmdVelRanges"]["lin_y"]
-        self.command_yaw_range = self.cfg["env"]["cmdVelRanges"]["ang_z"]
+        self._load_joint_data()
+        self._prepare_sim()
+        self._prepare_tensors()
 
-        # plane params
-        self.plane_static_friction = self.cfg["env"]["plane"]["staticFriction"]
-        self.plane_dynamic_friction = self.cfg["env"]["plane"]["dynamicFriction"]
-        self.plane_restitution = self.cfg["env"]["plane"]["restitution"]
+        self.actions = torch.zeros(
+            self.num_envs, self.num_actions, dtype=torch.float,
+            device=self.device, requires_grad=False)
 
-        # base initialisation state
-        pos = self.cfg["env"]["baseInitState"]["pos"]
-        rot = self.cfg["env"]["baseInitState"]["rot"]
-        v_lin = self.cfg["env"]["baseInitState"]["vLin"]
-        v_ang = self.cfg["env"]["baseInitState"]["vAng"]
-        state = pos + rot + v_lin + v_ang
-
-        self.base_init_state = state
-
-        # default joint positions
-        self.named_default_joint_angles = self.cfg["env"]["defaultJointAngles"]
-
-        self.cfg["env"]["numObservations"] = 65
-        self.cfg["env"]["numActions"] = 16
-
-        # random external force parameters
-        self.force_toggle_chance = self.cfg["env"]["force"]["toggleChance"] # per step
-        self.force_strength = self.cfg["env"]["force"]["maxStrength"] # per axis
-        self.force_pos_range = self.cfg["env"]["force"]["posRange"] # diameter
-
-        super().__init__(config=self.cfg, rl_device=rl_device, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless, virtual_screen_capture=virtual_screen_capture, force_render=force_render)
-
-        # other
-        self.dt = self.sim_params.dt
-        self.max_episode_length_s = self.cfg["env"]["learn"]["episodeLength_s"]
-        self.max_episode_length = int(self.max_episode_length_s / self.dt + 0.5)
-        self.Kp = self.cfg["env"]["control"]["stiffness"]
-        self.Kd = self.cfg["env"]["control"]["damping"]
-
-        for key in self.rew_scales.keys():
-            self.rew_scales[key] *= self.dt
-
-        if self.viewer != None:
-            p = self.cfg["env"]["viewer"]["pos"]
-            lookat = self.cfg["env"]["viewer"]["lookat"]
-            cam_pos = gymapi.Vec3(p[0], p[1], p[2])
-            cam_target = gymapi.Vec3(lookat[0], lookat[1], lookat[2])
-            self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
-
-        # create motion capture data storage and variables
-        self.current_frames = torch.zeros(self.num_envs, dtype=torch.float64, device=self.device)
-        self.mocap_data = self.load_mocap_data(
-            self.cfg["env"]["mocap"]["path"],
-            self.cfg["env"]["mocap"]["trimStart"],
-            self.cfg["env"]["mocap"]["trimEnd"],
-            self.cfg["env"]["mocap"]["scale"])
-        self.time_per_frame = self.cfg["env"]["mocap"]["timePerFrame"]
-        self.reset_on_loop = self.cfg["env"]["mocap"]["resetOnLoop"]
-        self.frames = torch.zeros((self.num_envs, self.mocap_data.shape[1], 3), dtype=torch.float, device=self.device)
-        self.frame_rate_multipliers = torch.ones((self.num_envs), dtype=torch.float, device=self.device)
-
-        # get gym state tensors
-        actor_root_state = self.gym.acquire_actor_root_state_tensor(self.sim)
-        actor_link_state = self.gym.acquire_rigid_body_state_tensor(self.sim)
-        dof_state_tensor = self.gym.acquire_dof_state_tensor(self.sim)
-        net_contact_forces = self.gym.acquire_net_contact_force_tensor(self.sim)
-        torques = self.gym.acquire_dof_force_tensor(self.sim)
-
-        self.gym.refresh_dof_state_tensor(self.sim)
-        self.gym.refresh_actor_root_state_tensor(self.sim)
-        self.gym.refresh_rigid_body_state_tensor(self.sim)
-        self.gym.refresh_net_contact_force_tensor(self.sim)
-        self.gym.refresh_dof_force_tensor(self.sim)
-
-        # create some wrapper tensors for different slices
-        self.root_states = gymtorch.wrap_tensor(actor_root_state)
-        self.link_states = gymtorch.wrap_tensor(actor_link_state).view(self.num_envs, -1, 13)
-        self.prev_root_states = self.root_states.clone()
-        self.dof_state = gymtorch.wrap_tensor(dof_state_tensor)
-        self.dof_pos = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 0]
-        self.dof_vel = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 1]
-        self.contact_forces = gymtorch.wrap_tensor(net_contact_forces).view(self.num_envs, -1, 3) # shape: num_envs, num_bodies, xyz axis
-        self.torques = gymtorch.wrap_tensor(torques).view(self.num_envs, self.num_dof)
-
-        self.default_dof_pos = torch.zeros_like(self.dof_pos, dtype=torch.float, device=self.device, requires_grad=False)
-
-        for i in range(self.cfg["env"]["numActions"]):
-            name = self.dof_names[i]
-            angle = self.named_default_joint_angles[name]
-            self.default_dof_pos[:, i] = angle
-
-        # additional data used later on
-        self.extras = {}
-        self.initial_root_states = self.root_states.clone()
-        self.initial_root_states[:] = to_torch(self.base_init_state, device=self.device, requires_grad=False)
-        self.gravity_vec = to_torch(get_axis_params(-1., self.up_axis_idx), device=self.device).repeat((self.num_envs, 1))
-        self.actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device = self.device, requires_grad=False)
-
-        # to randomly apply external forces to the robot during training
-        self.apply_external_forces = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False)
-        self.external_forces = torch.zeros(self.num_envs * self.num_bodies, 3, dtype=torch.float, device=self.device, requires_grad=False)
-        self.external_forces_body = self.external_forces[0::self.num_bodies, :]
-        self.external_force_pos = torch.zeros_like(self.external_forces)
-        self.external_force_pos_body = self.external_force_pos[0::self.num_bodies, :]
+        self.act_space = spaces.Box(
+            np.zeros(self.num_actions), np.ones(self.num_actions) * 1.)
 
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
 
@@ -160,11 +57,13 @@ class LearnFromMotionCapture(VecTask):
         if self.randomize:
             self.apply_randomizations(self.randomization_params)
 
+
     def _create_ground_plane(self):
         plane_params = gymapi.PlaneParams()
         plane_params.normal = gymapi.Vec3(0.0, 0.0, 1.0)
-        plane_params.static_friction = self.plane_dynamic_friction
+        plane_params.static_friction =  self.cfg["env"]["plane"]["staticFriction"]
         self.gym.add_ground(self.sim, plane_params)
+
 
     def _create_envs(self, num_envs, spacing, num_per_row):
         asset_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../assets')
@@ -186,9 +85,8 @@ class LearnFromMotionCapture(VecTask):
         ester_asset = self.gym.load_asset(self.sim, asset_root, asset_file, asset_options)
         self.num_dof = self.gym.get_asset_dof_count(ester_asset)
         self.num_bodies = self.gym.get_asset_rigid_body_count(ester_asset)
-
         start_pose = gymapi.Transform()
-        start_pose.p = gymapi.Vec3(*self.base_init_state[:3])
+        start_pose.p = gymapi.Vec3(*self.initial_pos[:3])
 
         body_names = self.gym.get_asset_rigid_body_names(ester_asset)
         self.dof_names = self.gym.get_asset_dof_names(ester_asset)
@@ -198,12 +96,7 @@ class LearnFromMotionCapture(VecTask):
         self.foot_contact_sensor_indices = torch.zeros(len(foot_names), dtype=torch.long, device=self.device, requires_grad=False)
         self.base_index = 0
 
-        # fl, fr, rl, rr, spine
-        self.ester_chain_indices = [[6, 7, 8], [10, 11, 12], [14, 15, 16], [18, 19, 20], [3, 0, 4]]
-        self.mocap_chain_indices = [[7, 8, 9, 10], [12, 13, 14, 15], [17, 18, 19], [21, 22, 23], [0, 1, 2, 3]]
         self.ester_foot_indices = torch.tensor([8, 12, 16, 20], dtype=torch.long, device=self.device)
-        self.mocap_foot_indices = torch.tensor([10, 15, 19, 23], dtype=torch.long, device=self.device)
-         
 
         dof_props = self.gym.get_asset_dof_properties(ester_asset)
         for i in range(self.num_dof):
@@ -232,24 +125,6 @@ class LearnFromMotionCapture(VecTask):
 
         self.base_index = self.gym.find_actor_rigid_body_handle(self.envs[0], self.ester_handles[0], "base")
 
-
-    def load_mocap_data(self, path, trim_start, trim_end, scale):
-        # path relative to IsaacGymEnvs/isaacgymenvs/data
-        # this file is in IsaacGymEnvs/isaacgymenvs/tasks
-        filedir = os.path.join(os.getcwd(), os.path.dirname(__file__))
-        full_path = os.path.join(filedir, '../data', path)
-
-        data = np.loadtxt(full_path, delimiter=',', dtype=float)
-        data = np.reshape(data, [-1, int(data.shape[1] / 3), 3])
-
-        # axis in weird order
-        tmp = np.copy(data[:, :, 2])
-        data[:, :, 2] = data[:, :, 1]
-        data[:, :, 1] = -tmp
-
-        data *= scale
-
-        return torch.from_numpy(data[trim_start:trim_end]).to(self.device)
 
     def pre_physics_step(self, actions):
         self.actions = actions.clone().to(self.device)
@@ -289,17 +164,12 @@ class LearnFromMotionCapture(VecTask):
     def compute_reward(self, actions): 
         self.rew_buf[:], self.reset_buf[:] = compute_ester_reward(
             # tensors
-            self.link_states,
-            self.frames,
+            self.dof_pos,
+            self.current_frames,
             self.torques,
             self.contact_forces,
             self.contact_fail_indices,
             self.progress_buf,
-            self.ester_foot_indices,
-            self.mocap_foot_indices,
-            # list
-            self.ester_chain_indices,
-            self.mocap_chain_indices,
             # dict
             self.rew_scales,
             # other
@@ -308,69 +178,16 @@ class LearnFromMotionCapture(VecTask):
         )
 
         self.reset_buf |= self.get_next_frames()
-        #self.calculate_avg_torques(self.torques, self.reset_buf)
 
     
-    def calculate_avg_torques(self, torques, reset):
-        try: self.torque_avgs
-        except AttributeError:
-            self.torque_avgs = torch.zeros_like(torques, device=self.device, requires_grad=False)
-            self.robot_iteration = torch.zeros(self.num_envs, dtype=torch.long, device=self.device, requires_grad=False)
-
-        self.torque_avgs += torques
-        self.robot_iteration += 1
-
-        if torch.any(reset == True):
-            summed_torques = self.torque_avgs[reset == True]
-            summed_torques = (summed_torques.t() / self.robot_iteration[reset == True]).t()
-            print(summed_torques)
-
-            self.torque_avgs[reset == True] = 0
-            self.robot_iteration[reset == True] = 0
-
-
-    def get_next_frames(self):
-        self.current_frames += self.frame_rate_multipliers * self.time_per_frame * self.dt
-        reset = torch.zeros(self.num_envs, dtype=np.bool, device=self.device)
-        # wrap frames if at end of mocap_data
-        remainder = self.current_frames % 1
-        overflow = self.current_frames >= self.mocap_data.shape[0]
-        self.current_frames[overflow] = remainder[overflow]
-        if self.reset_on_loop:
-            reset[overflow] = 1
-        current_frame = torch.floor(self.current_frames).long()
-        next_frame = (current_frame + 1) % self.mocap_data.shape[0]
-        frame_1 = self.mocap_data[current_frame]
-        frame_2 = self.mocap_data[next_frame]
-        self.frames = torch.lerp(frame_1, frame_2, remainder[:, None, None])
-
-        # Transform frames to match ester transform
-        # subtract center position
-        self.frames = self.frames - self.frames[:, MOCAP_SPINE_CENTER, :][:, None, :]
-
-        # we care about the XY vector from SPINE_CENTER to FRONT
-        frame_forwards = self.frames[:, MOCAP_FORWARDS, :2]
-        frame_forwards = (frame_forwards.t() / torch.linalg.norm(frame_forwards, dim=-1)).t()
-
-        ester_forwards = self.link_states[:, ESTER_FORWARDS, :2] - self.link_states[:, ESTER_SPINE_CENTER, :2]
-        ester_forwards = (ester_forwards.t() / torch.linalg.norm(ester_forwards, dim=-1)).t()
-
-        # Calculate rotation matrix from frame forwards to ester forwards
-        cos = torch.clamp((frame_forwards * ester_forwards).sum(dim=-1).squeeze(), min=-1, max=1)
-        sin = torch.sin(torch.acos(cos))
-        R = torch.zeros((cos.shape[0], 2, 2), dtype=torch.double, device=self.device)
-        R[:, 0, 0] = cos
-        R[:, 0, 1] = -sin
-        R[:, 1, 0] = sin
-        R[:, 1, 1] = cos
-
-        # Apply rotation matrix
-        # V @ R.t() is equivalent to (R @ V.t()).t()
-        self.frames[:, :, :2] = self.frames[:, :, :2] @ torch.transpose(R, 1, 2)
-        # Add ester root positions
-        self.frames += self.link_states[:, ESTER_SPINE_CENTER, :3][:, None, :]
-
-        return reset
+    def get_next_frames(self, reset=None):
+        if reset is not None:
+            self.current_frames, r = self.joint_data_replayer.next_frame(
+                0, self.fps * self.frame_rate_multipliers, reset=reset)
+        else:
+            self.current_frames, r = self.joint_data_replayer.next_frame(
+                self.dt, self.fps * self.frame_rate_multipliers)
+        return r
 
 
     def compute_observations(self):
@@ -385,11 +202,9 @@ class LearnFromMotionCapture(VecTask):
             self.root_states,
             self.prev_root_states,
             self.dof_pos,
-            self.default_dof_pos,
+            self.current_frames,
             self.dof_vel,
             self.torques,
-            self.contact_forces,
-            self.foot_contact_sensor_indices,
             self.gravity_vec,
             self.actions,
             self.frame_rate_multipliers,
@@ -409,14 +224,24 @@ class LearnFromMotionCapture(VecTask):
         if self.randomize:
                 self.apply_randomizations(self.randomization_params)
 
-        positions_offset = torch_rand_float(0.5, 1.5, (len(env_ids), self.num_dof), device=self.device)
-        velocities = torch_rand_float(-0.1, 0.1, (len(env_ids), self.num_dof), device=self.device)
+        positions = self.default_dof_pos[env_ids]
+        velocities = torch.zeros(
+            (len(env_ids), self.num_dof), dtype=torch.float,
+            device=self.device, requires_grad=False)
+
+        if self.randomize:
+            positions = torch.randn(
+                len(env_ids), self.num_dof, dtype=torch.float,
+                device=self.device, requires_grad=False) * 0.1 + 0.5
+            positions = self.dof_lower_limit + positions * (self.dof_upper_limit - self.dof_lower_limit)
+            velocities = torch_rand_float(
+                -0.1, 0.1, (len(env_ids), self.num_dof), device=self.device)
+        
+        self.dof_pos[env_ids] = positions
+        self.dof_vel[env_ids] = velocities
 
         self.frame_rate_multipliers[env_ids] = torch.rand((len(env_ids)), device=self.device, dtype=torch.float) * 1.5 + 0.5 # 0.5 < X < 2
-        self.get_next_frames()
-
-        self.dof_pos[env_ids] = self.default_dof_pos[env_ids]# * positions_offset
-        self.dof_vel[env_ids] = velocities
+        self.get_next_frames(reset=env_ids)
 
         env_ids_int32 = env_ids.to(dtype=torch.int32)
 
@@ -432,210 +257,172 @@ class LearnFromMotionCapture(VecTask):
         self.reset_buf[env_ids] = 1
 
 
+    def _load_config(self):
+        self.randomization_params = self.cfg["task"]["randomization_params"]
+        self.randomize = self.cfg["task"]["randomize"]
+
+        self.initial_pos = self.cfg["env"]["initialPos"]
+
+        self.force_toggle_chance = self.cfg["env"]["force"]["toggleChance"]
+        self.force_strength = self.cfg["env"]["force"]["maxStrength"]
+        self.force_pos_range = self.cfg["env"]["force"]["posRange"]
+
+        self.named_default_joint_angles = self.cfg["env"]["defaultJointAngles"]
+        self.named_joint_upper_limits = self.cfg["env"]["dofUpperLimits"]
+        self.named_joint_lower_limits = self.cfg["env"]["dofLowerLimits"]
+
+        self.rew_scales = {}
+        self.rew_scales["jointPos"] = self.cfg["env"]["learn"]["jointPosRewardScale"]
+        self.rew_scales["energy"] = self.cfg["env"]["learn"]["energyRewardScale"]
+
+        self.lin_vel_scale = self.cfg["env"]["learn"]["linVelScale"]
+        self.lin_acc_scale = self.cfg["env"]["learn"]["linAccScale"]
+        self.ang_vel_scale = self.cfg["env"]["learn"]["angVelScale"]
+        self.dof_pos_scale = self.cfg["env"]["learn"]["dofPosScale"]
+        self.dof_vel_scale = self.cfg["env"]["learn"]["dofVelScale"]
+        self.torques_scale = self.cfg["env"]["learn"]["dofEffScale"]
+
+
+    def _load_joint_data(self):
+        self.joint_data_path = self.cfg["env"]["mocap"]["path"]
+        self.fps = self.cfg["env"]["mocap"]["fps"]
+        self.reset_on_loop = self.cfg["env"]["mocap"]["resetOnLoop"]
+        self.frame_rate_multipliers = torch.zeros(
+            (self.num_envs), device=self.device, dtype=torch.float)
+        self.joint_data_replayer = JointDataReplayer(
+            filename=self.joint_data_path, random_start=False,
+            loop=(not self.reset_on_loop), num_parallels=self.num_envs,
+            device=self.device)
+
+
+    def _read_active_joints(self):
+        self.named_active_joints = self.cfg["env"]["activeJoints"]
+        num_actions = 0
+        self.num_joints = 0
+        for name in self.named_active_joints:
+            self.num_joints += 1
+            if self.named_active_joints[name]:
+                num_actions += 1
+        self.cfg["env"]["numActions"] = num_actions
+        self.cfg["env"]["numObservations"] = self.cfg["env"]["numObs"] + num_actions
+
+
+    def _prepare_sim(self):
+        self.dt = self.sim_params.dt
+        self.max_episode_length_s = self.cfg["env"]["learn"]["episodeLength_s"]
+        self.max_episode_length = int(self.max_episode_length_s / self.dt + 0.5)
+        self.Kp = self.cfg["env"]["control"]["stiffness"]
+        self.Kd = self.cfg["env"]["control"]["damping"]
+
+        for key in self.rew_scales.keys():
+            self.rew_scales[key] *= self.dt
+
+        if self.viewer != None:
+            p = self.cfg["env"]["viewer"]["pos"]
+            lookat = self.cfg["env"]["viewer"]["lookat"]
+            cam_pos = gymapi.Vec3(p[0], p[1], p[2])
+            cam_target = gymapi.Vec3(lookat[0], lookat[1], lookat[2])
+            self.gym.viewer_camera_look_at(
+                self.viewer, None, cam_pos, cam_target)
+
+
+    def _prepare_tensors(self):
+        actor_root_state = self.gym.acquire_actor_root_state_tensor(
+            self.sim)
+        dof_state_tensor = self.gym.acquire_dof_state_tensor(self.sim)
+        rbd_tensor = self.gym.acquire_rigid_body_state_tensor(self.sim)
+        net_contact_forces = self.gym.acquire_net_contact_force_tensor(
+            self.sim)
+        torques = self.gym.acquire_dof_force_tensor(self.sim)
+
+        self.gym.refresh_dof_state_tensor(self.sim)
+        self.gym.refresh_actor_root_state_tensor(self.sim)
+        self.gym.refresh_rigid_body_state_tensor(self.sim)
+        self.gym.refresh_net_contact_force_tensor(self.sim)
+        self.gym.refresh_dof_force_tensor(self.sim)
+
+        self.root_states = gymtorch.wrap_tensor(actor_root_state)
+        self.link_states = gymtorch.wrap_tensor(rbd_tensor).view(self.num_envs, -1, 13)
+        self.prev_root_states = self.root_states.clone()
+        self.dof_state = gymtorch.wrap_tensor(dof_state_tensor)
+        self.dof_pos = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 0]
+        self.dof_vel = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 1]
+        self.contact_forces = gymtorch.wrap_tensor(net_contact_forces).view(self.num_envs, -1, 3) # shape: num_envs, num_bodies, xyz axis
+        self.torques = gymtorch.wrap_tensor(torques).view(self.num_envs, self.num_dof)
+
+        self.default_dof_pos = torch.zeros_like(
+            self.dof_pos, dtype=torch.float, device=self.device,
+            requires_grad=False)
+        self.dof_upper_limit = torch.zeros_like(
+            self.dof_pos, dtype=torch.float, device=self.device,
+            requires_grad=False)
+        self.dof_lower_limit = torch.zeros_like(
+            self.dof_pos, dtype=torch.float, device=self.device,
+            requires_grad=False)
+        self.dof_active = torch.zeros_like(
+            self.dof_pos, dtype=torch.float, device=self.device,
+            requires_grad=False)
+
+        for i in range(self.num_joints):
+            name = self.dof_names[i]
+            angle = self.named_default_joint_angles[name]
+            active = self.named_active_joints[name]
+            self.default_dof_pos[:, i] = angle
+            upper = self.named_joint_upper_limits[name]
+            lower = self.named_joint_lower_limits[name]
+            self.dof_upper_limit[:, i] = upper
+            self.dof_lower_limit[:, i] = lower
+            self.dof_active[:, i] = active
+
+        self.action_scale = self.dof_upper_limit - self.dof_lower_limit
+
+        self.initial_root_states = self.root_states.clone()
+        self.initial_root_states[:, :3] = to_torch(
+            self.initial_pos, device=self.device, requires_grad=False)
+        self.initial_root_states[:, 7] = 1
+
+        self.gravity_vec = to_torch(get_axis_params(-1., self.up_axis_idx), device=self.device).repeat((self.num_envs, 1))
+        self.actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device = self.device, requires_grad=False)
+
+        # to randomly apply external forces to the robot during training
+        self.apply_external_forces = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False)
+        self.external_forces = torch.zeros(self.num_envs * self.num_bodies, 3, dtype=torch.float, device=self.device, requires_grad=False)
+        self.external_forces_body = self.external_forces[0::self.num_bodies, :]
+        self.external_force_pos = torch.zeros_like(self.external_forces)
+        self.external_force_pos_body = self.external_force_pos[0::self.num_bodies, :]
+
+
 ## jit functions for actual calculation of reward and obs
-
-
-@torch.jit.script
-# splits a single chain (e.g. left leg) into points for each robot or
-# mocap frame instance
-def split_into_points(
-    # int
-    num_points,
-    # Tensor (num_envs, num_links, 3)
-    links,
-    # Tensor (length_of_chain)
-    chain):
-    # type: (int, Tensor, Tensor) -> Tensor
-    # create output array
-    num_envs = links.shape[0]
-    r_num_envs = torch.arange(start=0, end=num_envs)
-    points = torch.zeros((num_envs, num_points, 3), dtype=torch.float, device=links.device)
-
-    # find the axis from the bottom to the top of the chains
-    # shape: (num_envs, 3)
-    axis = links[:, chain[-1]] - links[:, chain[0]]
-    dist = torch.linalg.norm(axis, dim=1)
-    axis = torch.nn.functional.normalize(axis, dim=1)
-
-    # n points => n-1 slices
-    slice_dist = dist / (num_points - 1)
-
-    chain_it = torch.zeros(num_envs, dtype=torch.long)
-    chain_axis_full = links[r_num_envs, chain[chain_it + 1]] - links[r_num_envs, chain[chain_it]]
-    chain_axis = torch.nn.functional.normalize(chain_axis_full, dim=1)
-    chain_mag = torch.linalg.norm(chain_axis_full, dim=1)
-
-    # dot each axis vector
-    axis_dot = (axis * chain_axis).sum(dim=1)
-
-    # skip any initial axis that are 90 degrees as we can't handle
-    while torch.any(torch.abs(axis_dot) < 1e-12):
-        chain_it[torch.abs(axis_dot) < 1e-12] += 1
-        chain_axis_full = links[r_num_envs, chain[chain_it + 1]] - links[r_num_envs, chain[chain_it]]
-        chain_axis = torch.nn.functional.normalize(chain_axis_full, dim=1)
-        chain_mag = torch.linalg.norm(chain_axis_full, dim=1)
-        axis_dot = (axis * chain_axis).sum(dim=1)
-    
-    # find D in the quadrilateral ABDC where AB is along the central axis
-    # and CD is along the chain axis
-    A = links[:, chain[0]]
-    C = links[:, chain[0]]
-
-    points[:, 0, :] = C
-
-    # initial point and final point added separately
-    for i in range(num_points - 2):
-        B = A + axis * slice_dist[:, None]
-        CD = chain_axis * (torch.linalg.norm(B - A, dim=1) / axis_dot)[:, None]
-        D = C + CD
-
-        # If we extend past the current link we need to find the next link
-        # in the chain
-        overshot = torch.linalg.norm(D - links[r_num_envs, chain[chain_it]]) > chain_mag
-        if torch.any(overshot):
-            # take key slices of overshot envs
-            o_links = links[overshot]
-            o_chain_it = chain_it[overshot]
-            o_axis = axis[overshot]
-            o_chain_axis_full = chain_axis_full[overshot]
-            o_chain_axis = chain_axis[overshot]
-            o_axis_dot = axis_dot[overshot]
-            o_A = A[overshot]
-            o_B = B[overshot]
-            o_C = C[overshot]
-            o_D = D[overshot]
-
-            r_overshot = torch.arange(start=0, end=len(overshot))
-            mD = o_links[r_overshot, chain[o_chain_it+1]]
-            mB = o_A + o_axis * (torch.linalg.norm(mD - o_C) * o_axis_dot)[:, None]
-
-            o_chain_it += 1
-            if torch.any(o_chain_it + 1 >= len(chain)):
-                x = o_chain_it + 1 >= len(chain)
-                print("===========================")
-                print(o_links[x])
-                print(r_overshot[x])
-                print(chain)
-                print(o_chain_it[x])
-                print(o_chain_it[x] + 1)
-                print(i)
-                print("===========================")
-                # temporary solution
-                points[:, i+1:-1, :] = chain[-1]
-                break
-            #print(r_overshot.shape)
-            #print(chain[o_chain_it+1].shape)
-            #print(chain[o_chain_it].shape)
-            #print(o_links[r_overshot, chain[o_chain_it+1]].shape)
-            #print(o_links[r_overshot, chain[o_chain_it]].shape)
-            o_chain_axis_full = o_links[r_overshot, chain[o_chain_it+1]] - o_links[r_overshot, chain[o_chain_it]]
-            o_chain_axis = torch.nn.functional.normalize(o_chain_axis_full, dim=1)
-            chain_mag[overshot] = torch.linalg.norm(o_chain_axis_full, dim=1)
-            o_axis_dot = (o_axis * o_chain_axis).sum(dim=1)
-
-            mDD = o_chain_axis * (torch.linalg.norm(o_B - mB, dim=1) / o_axis_dot)[:, None]
-
-            o_D = mD + mDD
-
-        # store points
-        points[:, i+1, :] = D
-        A = B
-        C = D
-
-    points[:, -1, :] = links[:, chain[-1]]
-
-    return points
-
-
-@torch.jit.script
-def herons_formula(A, B, C):
-    # type: (Tensor, Tensor, Tensor) -> Tensor
-    # calculate area of triangles with heron's formula
-    a = torch.linalg.norm(A - B, dim=1)
-    b = torch.linalg.norm(B - C, dim=1)
-    c = torch.linalg.norm(C - A, dim=1)
-    s = (a + b + c) / 2
-    area_squared = s * (s-a) * (s-b) * (s-c)
-    # in the event that rounding results in negative area
-    area_squared[area_squared < 1e-12] = 0
-    return torch.sqrt(area_squared)
-
-
-@torch.jit.script
-def integrate_err(ester_link_pos, ester_chain, mocap_link_pos, mocap_chain):
-    # type: (Tensor, List[int], Tensor, List[int]) -> Tensor
-    """
-    @param ester_link_pos (num_envs, num_links, 3) -> positions of links
-    @param ester_chain (num_links_in_chain) -> idx of links
-    @param mocap_link_pos (num_envs, num_pts, 3) -> positions of mocap
-    @param mocap_chain (num_links_in_chain) -> idx of links
-    
-    @returns integral between ester_chain and mocap_chain relative to each
-             root
-    """
-    num_pts = int(20)
-    ester_points = split_into_points(num_pts, ester_link_pos, torch.tensor(ester_chain))
-    mocap_points = split_into_points(num_pts, mocap_link_pos, torch.tensor(mocap_chain))
-
-    sum_area = torch.zeros((ester_link_pos.shape[0]), device=ester_link_pos.device, dtype=torch.float32)
-    for i in range(num_pts - 1):
-        # find the area of the quadrilateral ABDC
-        A = ester_points[:, i]
-        B = ester_points[:, i+1]
-        C = mocap_points[:, i]
-        D = mocap_points[:, i+1]
-
-        # split into triangles ABC and BCD to find area
-        area = herons_formula(A, B, C) + herons_formula(B, C, D)
-        sum_area += area
-
-    return sum_area
-
 
 @torch.jit.script
 def compute_ester_reward(
     # tensors
-    link_states, # (num_envs, num_links, 13)
-    mocap_frames, # (num_envs, num_links, 3)
+    joint_pos, # (num_envs, num_joints)
+    current_frames, # (num_envs, num_joints)
     torques,
     contact_forces,
     contact_fail_indices,
     episode_lengths,
-    ester_foot_indices,
-    mocap_foot_indices,
-    # list
-    ester_chain_indices, # (num_chains, len_chain)
-    mocap_chain_indices, # (num_chains, len_chain)
     # dict
     rew_scales,
     # other
     base_index,
     max_episode_length,
 ):
-    # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, List[List[int]], List[List[int]], dict[str, float], int, int) -> Tuple[Tensor, Tensor]
-    #int_err = torch.zeros((link_states.shape[0]), dtype=torch.float32, device=link_states.device)
-    #for ester_chain, mocap_chain in zip(ester_chain_indices, mocap_chain_indices):
-    #    int_err += integrate_err(link_states[:, :, :3], ester_chain, mocap_frames, mocap_chain)
-
-    #chain_rew = torch.exp(-int_err)
-    base_quat = link_states[:, 0, 3:7]
-    rel_foot_pos = link_states[:, ester_foot_indices, :3] - link_states[:, 0, :3].reshape(-1, 1, 3).repeat(1, len(ester_foot_indices), 1)
-    mocap_foot_pos = mocap_frames[:, mocap_foot_indices, :]
-    for i in range(rel_foot_pos.shape[1]):
-        rel_foot_pos[:, i, :] = quat_rotate_inverse(base_quat, rel_foot_pos[:, i, :])
-    foot_err = torch.linalg.norm(rel_foot_pos - mocap_foot_pos, dim=-1)
-    foot_rew = torch.exp(-torch.sum(foot_err, dim=-1))
+    # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, dict[str, float], int, int) -> Tuple[Tensor, Tensor]
+    jnt_errors = joint_pos - current_frames
+    joint_rew = torch.exp(-torch.sum(torch.square(jnt_errors), dim=-1)/0.25)
     energy_rew = torch.exp(-torch.sum(torch.square(torques), dim=-1)/0.25)
+    alive_rew = 1
 
-    # rew_scales["chainError"] * chain_rew + \
-    total_reward = rew_scales["footError"] * foot_rew + \
-                   rew_scales["energy"] * energy_rew
+    total_reward = rew_scales["jointPos"] * joint_rew + \
+                   rew_scales["energy"] * energy_rew + \
+                   alive_rew
     total_reward = torch.clip(total_reward, 0., None)
 
     #reset = torch.norm(contact_forces[:, base_index, :], dim=1) > 1.
     # if non-foot contact forces exist we fell over
     reset = torch.any(torch.norm(contact_forces[:, contact_fail_indices, :], dim=2) > 1., dim=1)
-    #reset = reset | torch.any(torch.norm(contact_forces[:, contact_fail_indices, :], dim=2) > 1., dim=1)
     # if we timeout the episode is over
     timeout = episode_lengths >= max_episode_length -1
     reset = reset | timeout
@@ -645,17 +432,17 @@ def compute_ester_reward(
 
 @torch.jit.script
 def compute_ester_observations(
+    # Tensors
     root_states,
     prev_root_states,
     dof_pos,
-    default_dof_pos,
+    current_frames,
     dof_vel,
     torques,
-    contact_forces,
-    foot_contact_sensor_indices,
     gravity_vec,
     actions,
     frame_rate_multipliers,
+    # Scalars
     lin_vel_scale,
     lin_acc_scale,
     ang_vel_scale,
@@ -664,7 +451,7 @@ def compute_ester_observations(
     torques_scale,
     dt
 ):
-    # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, float, float, float, float, float, float, float) -> Tensor
+    # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, float, float, float, float, float, float, float) -> Tensor
     base_quat = root_states[:, 3:7]
     base_lin_vel = quat_rotate_inverse(base_quat, root_states[:, 7:10])
     prev_lin_vel = quat_rotate_inverse(prev_root_states[:, 3:7], prev_root_states[:, 7:10])
@@ -672,9 +459,8 @@ def compute_ester_observations(
     base_lin_vel *= lin_vel_scale
     base_ang_vel = quat_rotate_inverse(base_quat, root_states[:, 10:13]) * ang_vel_scale
     projected_gravity = quat_rotate(base_quat, gravity_vec)
-    dof_pos_scaled = (dof_pos - default_dof_pos) * dof_pos_scale
-
-    foot_contacts = torch.any(contact_forces[:, foot_contact_sensor_indices, :] > 1., 2)
+    dof_pos_scaled = dof_pos * dof_pos_scale
+    current_frames_scaled = current_frames * dof_pos_scale
 
     # rescale to -1 to 1 and set shape to (X, 1)
     scaled_frame_rate_multipliers = 2 * (frame_rate_multipliers[:, None] - 0.5) / 1.5 - 1
@@ -684,10 +470,10 @@ def compute_ester_observations(
                      base_lin_acc,
                      base_ang_vel,
                      projected_gravity,
+                     current_frames_scaled,
                      dof_pos_scaled,
                      dof_vel*dof_vel_scale,
-    #                 torques*torques_scale,
-                     foot_contacts,
+                     torques*torques_scale,
                      actions),
                      dim=1)
 
