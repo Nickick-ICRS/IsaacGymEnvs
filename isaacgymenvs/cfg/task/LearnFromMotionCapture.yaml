@@ -15,7 +15,7 @@ env:
   numObs: 77
 
   mocap:
-    path: '/home/nick/catkin_ws/src/ESTER/ester_walking_gait/generated/all_dofs/dog_pace_joint_pos.txt'
+    path: 'all_dofs/dog_pace_joint_pos.txt'
     resetOnLoop: False
     fps: 30
 

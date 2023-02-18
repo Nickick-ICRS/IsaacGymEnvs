@@ -10,7 +10,7 @@ from isaacgym.torch_utils import *
 
 from isaacgymenvs.tasks.base.vec_task import VecTask
 
-from ester_walking_gait.joint_data_replayer_torch import JointDataReplayer
+from .joint_data_replayer_torch import JointDataReplayer
 
 from typing import Tuple, Dict
 
@@ -283,7 +283,10 @@ class LearnFromMotionCapture(VecTask):
 
 
     def _load_joint_data(self):
-        self.joint_data_path = self.cfg["env"]["mocap"]["path"]
+        root = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), '../data')
+        self.joint_data_path = os.path.join(
+            root, self.cfg["env"]["mocap"]["path"])
         self.fps = self.cfg["env"]["mocap"]["fps"]
         self.reset_on_loop = self.cfg["env"]["mocap"]["resetOnLoop"]
         self.frame_rate_multipliers = torch.zeros(
