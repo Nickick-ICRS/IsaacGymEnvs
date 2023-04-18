@@ -58,7 +58,7 @@
   <joint name="front_spine_pitch_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0.045 0.025 -0.015"/>
     <axis xyz="0 1 0"/>
-    <limit effort="2.5" lower="-0.2617993877991494" upper="0.2617993877991494" velocity="83.775"/>
+    <limit effort="4.45" lower="-0.2617993877991494" upper="0.2617993877991494" velocity="47.125"/>
     <dynamics damping="0.05" friction="0.1"/>
     <parent link="spine_center_link"/>
     <child link="front_spine_pitch_link"/>
@@ -95,7 +95,7 @@
   <joint name="rear_spine_pitch_joint" type="revolute">
     <origin rpy="0 0 0" xyz="-0.045 -0.025 -0.015"/>
     <axis xyz="0 1 0"/>
-    <limit effort="2.5" lower="-0.2617993877991494" upper="0.2617993877991494" velocity="83.775"/>
+    <limit effort="4.45" lower="-0.2617993877991494" upper="0.2617993877991494" velocity="47.125"/>
     <dynamics damping="0.05" friction="0.1"/>
     <parent link="spine_center_link"/>
     <child link="rear_spine_pitch_link"/>
@@ -120,7 +120,7 @@
   <joint name="front_spine_yaw_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 -0.02505 0.02115"/>
     <axis xyz="0 0 1"/>
-    <limit effort="2.5" lower="-0.2617993877991494" upper="0.2617993877991494" velocity="83.775"/>
+    <limit effort="4.45" lower="-0.2617993877991494" upper="0.2617993877991494" velocity="47.125"/>
     <dynamics damping="0.05" friction="0.1"/>
     <parent link="front_spine_pitch_link"/>
     <child link="front_spine_yaw_link"/>
@@ -145,7 +145,7 @@
   <joint name="rear_spine_yaw_joint" type="revolute">
     <origin rpy="0 0 0" xyz="0 0.02505 0.02115"/>
     <axis xyz="0 0 1"/>
-    <limit effort="2.5" lower="-0.2617993877991494" upper="0.2617993877991494" velocity="83.775"/>
+    <limit effort="4.45" lower="-0.2617993877991494" upper="0.2617993877991494" velocity="47.125"/>
     <dynamics damping="0.05" friction="0.1"/>
     <parent link="rear_spine_pitch_link"/>
     <child link="rear_spine_yaw_link"/>
@@ -206,7 +206,7 @@
   <joint name="front_left_hip_fe_joint" type="revolute">
     <origin rpy="0 0 0" xyz="-0.0175 -0.0878 0"/>
     <axis xyz="1 0 0"/>
-    <limit effort="2.5" lower="-0.7853981633974483" upper="0.17453292519943295" velocity="83.775"/>
+    <limit effort="4.45" lower="-0.7853981633974483" upper="0.17453292519943295" velocity="47.125"/>
     <dynamics damping="0.05" friction="0.1"/>
     <parent link="front_left_hip_aa_link"/>
     <child link="front_left_hip_fe_link"/>
@@ -243,7 +243,7 @@
   <joint name="front_left_upper_leg_joint" type="revolute">
     <origin rpy="0 0.3490658503988659 3.141592653589793" xyz="-0.0773 -0.013 0"/>
     <axis xyz="0 1 0"/>
-    <limit effort="2.5" lower="-1.5707963267948966" upper="1.5707963267948966" velocity="83.775"/>
+    <limit effort="4.45" lower="-1.5707963267948966" upper="1.5707963267948966" velocity="47.125"/>
     <dynamics damping="0.05" friction="0.1"/>
     <parent link="front_left_hip_fe_link"/>
     <child link="front_left_upper_leg_link"/>
@@ -279,7 +279,7 @@
   </link>
   <joint name="front_left_lower_leg_joint" type="revolute">
     <axis xyz="0 1 0"/>
-    <limit effort="2.5" lower="-1.5707963267948966" upper="1.5707963267948966" velocity="83.775"/>
+    <limit effort="4.45" lower="-1.5707963267948966" upper="1.5707963267948966" velocity="47.125"/>
     <dynamics damping="0.05" friction="0.1"/>
     <origin rpy="0 0 0" xyz="0 0.0285 -0.1232"/>
     <parent link="front_left_upper_leg_link"/>
@@ -365,7 +365,7 @@
   <joint name="front_right_hip_fe_joint" type="revolute">
     <origin rpy="0 0 3.141592653589793" xyz="0.0135 -0.0878 0"/>
     <axis xyz="1 0 0"/>
-    <limit effort="2.5" lower="-0.17453292519943295" upper="0.7853981633974483" velocity="83.775"/>
+    <limit effort="4.45" lower="-0.17453292519943295" upper="0.7853981633974483" velocity="47.125"/>
     <dynamics damping="0.05" friction="0.1"/>
     <parent link="front_right_hip_aa_link"/>
     <child link="front_right_hip_fe_link"/>
@@ -402,7 +402,7 @@
   <joint name="front_right_upper_leg_joint" type="revolute">
     <origin rpy="0 0.3490658503988659 3.141592653589793" xyz="-0.0773 0.013 0"/>
     <axis xyz="0 1 0"/>
-    <limit effort="2.5" lower="-1.5707963267948966" upper="1.5707963267948966" velocity="83.775"/>
+    <limit effort="4.45" lower="-1.5707963267948966" upper="1.5707963267948966" velocity="47.125"/>
     <dynamics damping="0.05" friction="0.1"/>
     <parent link="front_right_hip_fe_link"/>
     <child link="front_right_upper_leg_link"/>
@@ -438,7 +438,7 @@
   </link>
   <joint name="front_right_lower_leg_joint" type="revolute">
     <axis xyz="0 1 0"/>
-    <limit effort="2.5" lower="-1.5707963267948966" upper="1.5707963267948966" velocity="83.775"/>
+    <limit effort="4.45" lower="-1.5707963267948966" upper="1.5707963267948966" velocity="47.125"/>
     <dynamics damping="0.05" friction="0.1"/>
     <origin rpy="0 0 0" xyz="0 -0.0285 -0.1232"/>
     <parent link="front_right_upper_leg_link"/>
@@ -524,7 +524,7 @@
   <joint name="rear_left_hip_fe_joint" type="revolute">
     <origin rpy="0 0 0" xyz="-0.0175 -0.0878 0"/>
     <axis xyz="1 0 0"/>
-    <limit effort="2.5" lower="-0.7853981633974483" upper="0.17453292519943295" velocity="83.775"/>
+    <limit effort="4.45" lower="-0.7853981633974483" upper="0.17453292519943295" velocity="47.125"/>
     <dynamics damping="0.05" friction="0.1"/>
     <parent link="rear_left_hip_aa_link"/>
     <child link="rear_left_hip_fe_link"/>
@@ -561,7 +561,7 @@
   <joint name="rear_left_upper_leg_joint" type="revolute">
     <origin rpy="0 0 3.141592653589793" xyz="-0.0259 -0.013 0"/>
     <axis xyz="0 1 0"/>
-    <limit effort="2.5" lower="-1.5707963267948966" upper="1.5707963267948966" velocity="83.775"/>
+    <limit effort="4.45" lower="-1.5707963267948966" upper="1.5707963267948966" velocity="47.125"/>
     <dynamics damping="0.05" friction="0.1"/>
     <parent link="rear_left_hip_fe_link"/>
     <child link="rear_left_upper_leg_link"/>
@@ -597,7 +597,7 @@
   </link>
   <joint name="rear_left_lower_leg_joint" type="revolute">
     <axis xyz="0 1 0"/>
-    <limit effort="2.5" lower="-1.5707963267948966" upper="1.5707963267948966" velocity="83.775"/>
+    <limit effort="4.45" lower="-1.5707963267948966" upper="1.5707963267948966" velocity="47.125"/>
     <dynamics damping="0.05" friction="0.1"/>
     <origin rpy="0 0 0" xyz="0 0.0285 -0.134"/>
     <parent link="rear_left_upper_leg_link"/>
@@ -683,7 +683,7 @@
   <joint name="rear_right_hip_fe_joint" type="revolute">
     <origin rpy="0 0 3.141592653589793" xyz="0.0135 -0.0878 0"/>
     <axis xyz="1 0 0"/>
-    <limit effort="2.5" lower="-0.17453292519943295" upper="0.7853981633974483" velocity="83.775"/>
+    <limit effort="4.45" lower="-0.17453292519943295" upper="0.7853981633974483" velocity="47.125"/>
     <dynamics damping="0.05" friction="0.1"/>
     <parent link="rear_right_hip_aa_link"/>
     <child link="rear_right_hip_fe_link"/>
@@ -720,7 +720,7 @@
   <joint name="rear_right_upper_leg_joint" type="revolute">
     <origin rpy="0 0 3.141592653589793" xyz="-0.0259 0.013 0"/>
     <axis xyz="0 1 0"/>
-    <limit effort="2.5" lower="-1.5707963267948966" upper="1.5707963267948966" velocity="83.775"/>
+    <limit effort="4.45" lower="-1.5707963267948966" upper="1.5707963267948966" velocity="47.125"/>
     <dynamics damping="0.05" friction="0.1"/>
     <parent link="rear_right_hip_fe_link"/>
     <child link="rear_right_upper_leg_link"/>
@@ -756,7 +756,7 @@
   </link>
   <joint name="rear_right_lower_leg_joint" type="revolute">
     <axis xyz="0 1 0"/>
-    <limit effort="2.5" lower="-1.5707963267948966" upper="1.5707963267948966" velocity="83.775"/>
+    <limit effort="4.45" lower="-1.5707963267948966" upper="1.5707963267948966" velocity="47.125"/>
     <dynamics damping="0.05" friction="0.1"/>
     <origin rpy="0 0 0" xyz="0 -0.0285 -0.134"/>
     <parent link="rear_right_upper_leg_link"/>

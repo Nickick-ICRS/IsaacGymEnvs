@@ -211,6 +211,7 @@ class WalkFromEnergyMin(VecTask):
             (self.dof_vel - self.prev_dof_vel) / self.dt,
             self.contact_forces,
             self.contact_fail_indices,
+            self.foot_contact_sensor_indices,
             self.progress_buf,
             # dict
             self.rew_scales,
@@ -320,7 +321,7 @@ class WalkFromEnergyMin(VecTask):
         self.rew_scales["ang_vel"] = self.cfg["env"]["learn"]["angVelRewardScale"]
         self.rew_scales["energy"] = self.cfg["env"]["learn"]["energyRewardScale"]
         self.rew_scales["acc"] = self.cfg["env"]["learn"]["accRewardScale"]
-        self.rew_scales["feet_raised"] = self.cfg["env"]["learn"]["feetRaisedRewardScale"]
+        self.rew_scales["feet_grounded"] = self.cfg["env"]["learn"]["feetGroundedRewardScale"]
 
         self.lin_vel_scale = self.cfg["env"]["learn"]["linVelScale"]
         self.lin_acc_scale = self.cfg["env"]["learn"]["linAccScale"]
@@ -455,6 +456,7 @@ def compute_ester_reward(
     dof_acc,
     contact_forces,
     contact_fail_indices,
+    foot_contact_sensor_indices,
     episode_lengths,
     # dict
     rew_scales,
@@ -462,7 +464,7 @@ def compute_ester_reward(
     base_index,
     max_episode_length
 ):
-    # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Dict[str, float], int, int) -> Tuple[Tensor, Tensor]
+    # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Dict[str, float], int, int) -> Tuple[Tensor, Tensor]
     base_quat = root_states[:, 3:7]
     base_lin_vel = quat_rotate_inverse(base_quat, root_states[:, 7:10])
     base_ang_vel = quat_rotate_inverse(base_quat, root_states[:, 10:13])
@@ -474,14 +476,16 @@ def compute_ester_reward(
     rew_lin_vel = torch.exp(-lin_vel_error/0.25) * rew_scales["lin_vel"]
     rew_ang_vel = torch.exp(-ang_vel_error/0.25) * rew_scales["ang_vel"]
 
-    # energy penalty
-    rew_energy = torch.sum(torch.square(torques * dof_vel), dim=1) * rew_scales["energy"]
+    # (heat/electrical) energy penalty
+    rew_energy = torch.sum(torch.square(torques), dim=1) * rew_scales["energy"]
 
     # acc penalty
     rew_acc = torch.sum(torch.square(dof_acc), dim=1) * rew_scales["acc"]
 
-    # feet lifted off ground penalty - penalise based on z position
-    rew_feet = torch.sum(foot_states[:, :, 2], dim=1) * rew_scales["feet_raised"]
+    # feet touching ground reward
+    rew_feet = torch.sum(torch.any(
+        contact_forces[:, foot_contact_sensor_indices, :] > 1., 2
+    )) * rew_scales["feet_grounded"]
 
     total_reward = rew_lin_vel + rew_ang_vel + rew_energy + rew_acc + rew_feet
     total_reward = torch.clip(total_reward, 0., None)
@@ -531,16 +535,16 @@ def compute_ester_observations(
 
     foot_contacts = torch.any(contact_forces[:, foot_contact_sensor_indices, :] > 1., 2)
 
-    obs = torch.cat((base_lin_vel,
-                     base_lin_acc,
-                     base_ang_vel,
-                     projected_gravity,
-                     commands_scaled,
-                     dof_pos_scaled,
-                     dof_vel*dof_vel_scale,
-                     torques*torques_scale,
-                     foot_contacts,
-                     actions),
+    obs = torch.cat((base_lin_vel, # 3
+                     base_lin_acc, # 3
+                     base_ang_vel, # 3
+                     projected_gravity, # 3
+                     commands_scaled, # x, y, theta
+                     dof_pos_scaled, # 16
+                     dof_vel*dof_vel_scale, # 16
+                     torques*torques_scale, # 16
+                     foot_contacts, # 4
+                     actions), # 16
                      dim=1)
 
     return obs

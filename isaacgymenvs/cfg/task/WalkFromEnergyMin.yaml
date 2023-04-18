@@ -38,9 +38,9 @@ env:
     # rewards
     linVelRewardScale: 1.0 
     angVelRewardScale: 0.5 
-    feetRaisedRewardScale: -0.01
-    energyRewardScale: 0 #-0.000025
-    accRewardScale:    0 #-0.000001
+    feetGroundedRewardScale: 0.025
+    energyRewardScale: -0.0025
+    accRewardScale:    0 #-0.001
 
     # normalization
     linVelScale: 2.0 
