@@ -15,22 +15,24 @@ env:
 
   controlFrequencyInv: 1 # 60 Hz
 
-  maxLinVel: 7
+  maxLinVel: 7 # 15mph
   maxAngVel: 6.28
+  maxLinAcc: 7 # This is 0-60 in 4s!
+  maxAngAcc: 6.28
 
-  dofVelocityScale: -1.
-  dofTorqueScale: -1.
+  dofVelocityScale: 0.02
+  dofTorqueScale: 0.033333
 
   # reward parameters
-  linVelRewScale: 1.0
+  linVelRewScale: 2.0
   angVelRewScale: 0.5
-  upRewScale: 0.1
+  upRewScale: 1.
 
   # cost parameters
   actionsCost: 0.005
   energyCost: 0.05
   jointsAtLimitCost: 0.1
-  terminationHeight: 0.31
+  terminationHeight: 0.5
 
   control:
     stiffness_pos: 150 # Nm

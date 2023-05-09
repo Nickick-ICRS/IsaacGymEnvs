@@ -77,8 +77,11 @@ class TwoWheelWalkingRobot(VecTask):
         self.initial_dof_vel = torch.zeros_like(self.dof_vel, device=self.device, dtype=torch.float)
 
         self.cmd_vel = torch.zeros((self.num_envs, 3), dtype=torch.float, device=self.device)
+        self.tgt_cmd_vel = torch.zeros((self.num_envs, 3), dtype=torch.float, device=self.device)
 
         self.dt = self.cfg["sim"]["dt"]
+        self.max_lin_acc = self.cfg["env"]["maxLinAcc"] * self.dt
+        self.max_ang_acc = self.cfg["env"]["maxAngAcc"] * self.dt
 
     def create_sim(self):
         self.sim = super().create_sim(self.device_id, self.graphics_device_id, self.physics_engine, self.sim_params)
@@ -242,6 +245,7 @@ class TwoWheelWalkingRobot(VecTask):
             gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
 
         self.reset_buf[env_ids] = 0
+        self.progress_buf[env_ids] = 0
 
     def pre_physics_step(self, actions):
         self.actions = actions.clone().to(self.device)
@@ -258,17 +262,29 @@ class TwoWheelWalkingRobot(VecTask):
         self.gym.set_dof_velocity_target_tensor(self.sim, vel_tensor)
 
     def post_physics_step(self):
-        self.randomize_buf += 1
         self.progress_buf += 1
 
         # Each episode is up to 1000 steps - after 100 start occaisionally
         # changing cmd_vel
         env_ids = self.progress_buf > 100
-        change = torch_rand_float(0., 1., (sum(env_ids), 1), device=self.device).squeeze() < 0.01
-        self.cmd_vel[env_ids, :][change, 0] = torch_rand_float(
-            -self.max_lin_vel, self.max_lin_vel, (sum(change), 1), device=self.device).squeeze()
-        self.cmd_vel[env_ids, :][change, 2] = torch_rand_float(
-            -self.max_ang_vel, self.max_ang_vel, (sum(change), 1), device=self.device).squeeze()
+        change = torch.logical_and(
+            torch_rand_float(0., 1., (self.num_envs, 1), device=self.device).squeeze() < 0.01,
+            env_ids)
+        if torch.any(change):
+            self.tgt_cmd_vel[change, 0] = torch_rand_float(
+                -self.max_lin_vel, self.max_lin_vel, (torch.sum(change), 1), device=self.device).squeeze()
+            self.tgt_cmd_vel[change, 2] = torch_rand_float(
+                -self.max_ang_vel, self.max_ang_vel, (torch.sum(change), 1), device=self.device).squeeze()
+
+        # Prevent instantaneous cmd_vel changes
+        cmd_vel_err = torch.abs(self.tgt_cmd_vel[:, 2] - self.cmd_vel[:, 2]) > self.max_lin_acc
+        sign = self.tgt_cmd_vel[:, 2] - self.cmd_vel[:, 2] >= 0
+        self.cmd_vel[:, 2][cmd_vel_err] += self.max_lin_acc * sign[cmd_vel_err]
+        self.cmd_vel[:, 2][~cmd_vel_err] = self.tgt_cmd_vel[:, 2][~cmd_vel_err]
+        cmd_vel_err = torch.abs(self.tgt_cmd_vel[:, 0] - self.cmd_vel[:, 0]) > self.max_lin_acc
+        sign = self.tgt_cmd_vel[:, 0] - self.cmd_vel[:, 0] >= 0
+        self.cmd_vel[:, 0][cmd_vel_err] += self.max_lin_acc * sign[cmd_vel_err]
+        self.cmd_vel[:, 0][~cmd_vel_err] = self.tgt_cmd_vel[:, 0][~cmd_vel_err]
 
         env_ids = self.reset_buf.nonzero(as_tuple=False).flatten()
         if len(env_ids) > 0:
@@ -286,15 +302,17 @@ class TwoWheelWalkingRobot(VecTask):
             colors = []
             for i in range(self.num_envs):
                 origin = self.gym.get_env_origin(self.envs[i])
-                pose = self.root_states[:, 0:3][i].cpu().numpy()
+                pose = self.root_states[i, :].cpu().numpy()
                 p = [origin.x + pose[0], origin.y + pose[1], origin.z + pose[2]]
+                x, y, z, w = (pose[3], pose[4], pose[5], pose[6])
+                yaw = np.arctan2(2*(z*w + y*x), -1 + 2*(w*w + x*x + y*y))
                 points.append([p[0], p[1], p[2], p[0], p[1], p[2]])
                 colors.append([0.97, 0.1, 0.06])
                 num_pts = 10
                 for k in range(num_pts):
-                    theta = self.cmd_vel[i, 2].cpu().numpy() * k / num_pts
+                    theta = self.cmd_vel[i, 2].cpu().numpy() * k / num_pts + yaw
                     R = np.array([[np.cos(theta), -np.sin(theta)],
-                                     [np.sin(theta),  np.cos(theta)]])
+                                  [np.sin(theta),  np.cos(theta)]])
                     v = R * self.cmd_vel[i, :2].cpu().numpy()
                     p = [points[-1][3], points[-1][4], points[-1][5]]
                     points.append(
